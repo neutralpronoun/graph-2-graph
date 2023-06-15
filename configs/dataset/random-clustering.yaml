@@ -1,0 +1,11 @@
+name: random-clustering
+n_samples : 2500
+max_size  : 24
+
+n_layers : 2
+hidden_dim : 64
+diffusion_steps: 2000
+
+n_epochs : 5000
+batch_size : 200
+val_every  : 100

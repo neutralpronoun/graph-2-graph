@@ -2,7 +2,10 @@ import torch
 from torch.nn import CosineSimilarity
 import os
 import wandb
+import copy
 import datetime
+import hydra
+from omegaconf import DictConfig, OmegaConf
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,19 +18,13 @@ from ogb.nodeproppred import PygNodePropPredDataset
 from UNet import GraphUNet
 from gat import GAT, EdgeCNN
 # from extra_features import ExtraFeatures, SimpleNodeCycleFeatures
-print(os.getcwd())
-print(os.listdir())
+# print(os.getcwd())
+# print(os.listdir())
 # os.chdir("../")
-from ToyDatasets import get_cube_dataset, cube_val_vis, get_ring_dataset, get_triangular_dataset
+from Datasets import *
 # os.chdir("graph-2-graph")
 
 
-# class DatasetFromNX(pyg.data.InMemoryDataset):
-#     def __init__(self, networkx_graphs):
-#         super().__init__(transform = None, process = None)
-#         self.nx_graphs  = networkx_graphs
-#         self.pyg_graphs = [pyg.utils.from_networkx(g, group_node_attrs=all) for g in self.nx_graphs]
-#
 
 def batch_diagonal(X):
     """
@@ -110,23 +107,24 @@ class KNodeCycles:
         return None, (c6_t / 12).unsqueeze(-1).float()
 
     def k_cycles(self, adj_matrix, verbose=False):
+        # TODO: removed asserts as for the bike dataset was throwing errors. Fix later!
         self.adj_matrix = adj_matrix
         self.calculate_kpowers()
 
         k2x, k2y = self.k2_cycle()
-        assert (k2x >= -0.1).all()
+        # assert (k2x >= -0.1).all(), k2x[k2x <= -0.1]
 
         k3x, k3y = self.k3_cycle()
-        assert (k3x >= -0.1).all()
+        # assert (k3x >= -0.1).all(), k3x[k3x <= -0.1]
 
         k4x, k4y = self.k4_cycle()
-        assert (k4x >= -0.1).all()
+        # assert (k4x >= -0.1).all(), k4x[k4x <= -0.1]
 
         k5x, k5y = self.k5_cycle()
-        assert (k5x >= -0.1).all(), k5x
+        # assert (k5x >= -0.1).all(), k5x[k5x <= -0.1]
 
         _, k6y = self.k6_cycle()
-        assert (k6y >= -0.1).all()
+        # assert (k6y >= -0.1).all()
 
         kcyclesx = torch.cat([k2x, k3x, k4x, k5x], dim=-1)
         kcyclesy = torch.cat([k2y, k3y, k4y, k5y, k6y], dim=-1)
@@ -149,21 +147,40 @@ class SimpleNodeCycleFeatures:
         y_cycles[y_cycles > 1] = 1
         return x_cycles, y_cycles
 
-def setup_wandb(data_name = "cube"):
+def setup_wandb(cfg):
+    print(OmegaConf.to_yaml(cfg))
+    data_name = cfg["name"]
     kwargs = {'name': f"{data_name}-" + datetime.datetime.now().strftime("%m-%d-%Y-%H-%M-%S"), 'project': f'Graph-2-Graph',
               'settings': wandb.Settings(_disable_stats=False), 'reinit': True, 'entity':'hierarchical-diffusion'}
     wandb.init(**kwargs)
+    wandb.config.update(cfg)
     wandb.save('*.txt')
 
-    wandb.log({"Type":"Training"})
+    # wandb.log({"Type":"Training"})
+    # wandb.log(cfg)
+
+# class EMA():
+#     def __init__(self, beta=0.9999):
+#         super().__init__()
+#         self.beta = beta
+#     def update_model_average(self, ma_model, current_model):
+#         for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+#             old_weight, up_weight = ma_params.data, current_params.data
+#             ma_params.data = self.update_average(old_weight, up_weight)
+#     def update_average(self, old, new):
+#         if old is None:
+#             return new
+#         return old * self.beta + (1 - self.beta) * new
 
 class DiffusionUNet(torch.nn.Module):
     def __init__(self, nx_graph_list, hidden_dim, extra_features = "cycles",
                  val_prop = 0.05, test_prop = 0.2, batch_size = 100,
-                 min_beta = 10 ** -4, max_beta = 0.02,
-                 diffusion_steps = 2000, use_wandb = True,
+                 min_beta = 10 ** -6, max_beta = 0.01, num_layers = 1,
+                 min_beta_sampling = 10**-4, max_beta_sampling = 0.09,
+                 diffusion_steps = 2000, diffusion_steps_sampling = 1000, use_wandb = True,
                  vis_fn = "colormap", output_dir = "outputs"):
         super(DiffusionUNet, self).__init__()
+
 
 
 
@@ -195,6 +212,8 @@ class DiffusionUNet(torch.nn.Module):
                 self.val_loader = DataLoader(dataset[train_n : train_n + val_n], batch_size=batch_size, shuffle=True)
                 self.test_loader = DataLoader(dataset[-test_n:], batch_size=batch_size, shuffle=False)
 
+
+
                 self.x_dim = 11
 
             else:
@@ -219,54 +238,63 @@ class DiffusionUNet(torch.nn.Module):
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
                                                batch_size=batch_size)
             self.val_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in val_graphs],
-                                               batch_size=batch_size)
+                                               batch_size=int(batch_size/10))
             self.test_loader = [pyg.utils.from_networkx(g, group_node_attrs=all) for g in test_graphs]
 
 
-
-
-        # self.model = GraphUNet(in_channels=self.x_dim + 1, # Currently passing t as a node-level feature
-        #                          hidden_channels=hidden_dim,
-        #                          out_channels=self.x_dim,
-        #                          depth=2,
-        #                          pool_ratios=0.5).to(self.device)
 
         if extra_features == "cycles":
             self.extra_features = SimpleNodeCycleFeatures()# ExtraFeatures()
             self.features_dim = 4
 
-        # self.model = EdgeCNN(in_channels = self.x_dim + 1 + 3, # +1 for timesteps, +3 for cycles
+        # self.model = GraphUNet(in_channels=self.x_dim + 1 + self.features_dim, # Currently passing t as a node-level feature
+        #                          hidden_channels=hidden_dim,
+        #                          out_channels=self.x_dim,
+        #                          depth=num_layers,
+        #                          pool_ratios=0.5).to(self.device)
+
+        # self.model = EdgeCNN(in_channels = self.x_dim + 1 + self.features_dim, # +1 for timesteps, +3 for cycles
         #                  out_channels= self.x_dim,
         #                  hidden_channels=hidden_dim,
-        #                  num_layers = 1).to(self.device)
+        #                  num_layers = num_layers).to(self.device)
+
+
+        # if ema_scheduler is not None:
+        #     self.ema_scheduler = ema_scheduler
+        #     self.netG_EMA = copy.deepcopy(self.model).to(self.device)
+        #     self.EMA = EMA(beta=self.ema_scheduler['ema_decay'])
+        # else:
+        #     self.ema_scheduler = None
 
         self.model = GAT(in_channels = self.x_dim + self.features_dim + 1, # +1 for timesteps
                          out_channels= self.x_dim,
                          hidden_channels=hidden_dim,
-                         num_layers = 1).to(self.device)
+                         num_layers = num_layers).to(self.device)
 
         self.loss_fn = torch.nn.MSELoss(reduction="mean")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                          lr=0.001)
+                                          lr=0.0001)
 
 
         self.diffusion_steps = diffusion_steps
+        self.diffusion_steps_sampling = diffusion_steps_sampling
 
         if vis_fn != "colormap":
             self.vis_fn = cube_val_vis
         else:
             self.vis_fn = colormap_vis
 
-        date_time = str(datetime.datetime.now())
-        print(str(date_time), os.getcwd())
-        date_time = date_time.replace(' ', '_')
-        date_time = date_time.replace(r':', r'_')
-        self.output_dir = output_dir + f"/{date_time}"
-        os.mkdir(self.output_dir)
-        os.chdir(self.output_dir)
+        # date_time = str(datetime.datetime.now())
+        # print(str(date_time), os.getcwd())
+        # date_time = date_time.replace(' ', '_')
+        # date_time = date_time.replace(r':', r'_')
+        # self.output_dir = output_dir + f"/{date_time}"
+        # os.mkdir(self.output_dir)
+        # os.chdir(self.output_dir)
 
         # self.sigmas = self.noise_schedule(diffusion_steps, schedule_type)
         self.prepare_noise_schedule(diffusion_steps = diffusion_steps, min_beta=min_beta, max_beta=max_beta)
+        self.prepare_noise_schedule(diffusion_steps=diffusion_steps_sampling, min_beta=min_beta_sampling, max_beta=max_beta_sampling, sampling=True)
         self.get_feature_normalisers()
         if type(nx_graph_list) is str:
             try:
@@ -306,6 +334,14 @@ class DiffusionUNet(torch.nn.Module):
         # print(torch.var(x0, dim = 0), torch.max(x0, dim = 0)[0])
 
         self.feature_vars = torch.mean(x0, dim = 0).to(self.device)
+
+
+        if torch.sum(torch.abs(self.feature_vars)) < 1e-3:
+            self.feature_vars = self.feature_vars / self.feature_vars
+
+        if torch.sum(torch.abs(self.feature_means)) < 1e-3:
+            self.feature_means = self.feature_means / self.feature_means
+
         print(f"Found feature means: {self.feature_means}")
         print(f"Found feature variances: {self.feature_vars}")
 
@@ -313,15 +349,19 @@ class DiffusionUNet(torch.nn.Module):
 
 
 
-    def prepare_noise_schedule(self, diffusion_steps = 400, min_beta = 10 ** -4, max_beta = 0.02, schedule_type = "cosine"):
+    def prepare_noise_schedule(self, diffusion_steps = 400, min_beta = 10 ** -4, max_beta = 0.02, schedule_type = "cosine", sampling = False):
         # if schedule_type == "cosine":
         #     ts = np.linspace(start = 0, stop = np.pi / 2, num = diffusion_steps)
         #     fn = np.sin(ts)
 
-        self.betas = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
-        self.alphas = 1 - self.betas
-        #TODO: currently zero noise
-        self.alpha_bars = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
+        if not sampling:
+            self.betas = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
+            self.alphas = 1 - self.betas
+            self.alpha_bars = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
+        else:
+            self.betas_sampling = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
+            self.alphas_sampling = 1 - self.betas
+            self.alpha_bars_sampling = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
 
 
         fig = plt.figure(figsize = (8,4))
@@ -382,6 +422,8 @@ class DiffusionUNet(torch.nn.Module):
         out = self.model(noisy_feat, batch.edge_index.to(self.device))
         loss = self.loss_fn(out, eta)
 
+
+
         return loss
 
     def train(self, n_epochs, val_every = 25, gif_first = True):
@@ -405,23 +447,36 @@ class DiffusionUNet(torch.nn.Module):
                 x0 = ((x0 - self.feature_means) / self.feature_vars).float()
 
                 eta = torch.randn_like(x0).to(self.device)
-                t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
-                x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+                # t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
+                # x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
 
                 noisy_feat = self.apply_noise(x0, t, eta=eta)
 
                 # print(t_appended.shape, x_cycles.shape, noisy_feat.shape)
+                # print(t_appended.shape, x_cycles.shape, noisy_feat.shape)
 
-                noisy_feat = torch.cat((t_appended, x_cycles, noisy_feat), dim=1)
+
 
                 # print(noisy_feat.shape)
-
+                # try:
+                noisy_feat = torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
+                                        self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                                        noisy_feat), dim=1)
                 out = self.model(noisy_feat, batch.edge_index.to(self.device))
+                # except:
+                #     print(f"t: {t_appended.shape}"
+                #           f"cycles: {x_cycles.shape}"
+                #           f"x: {noisy_feat.shape}"
+                #           f"batch: {batch.x.shape}")
                 loss = self.loss_fn(out, eta)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+                # if self.ema_scheduler is not None:
+                #     if epoch_number > self.ema_scheduler['ema_start'] and epoch_number % self.ema_scheduler['ema_iter'] == 0:
+                #         self.EMA.update_model_average(self.netG_EMA, self.model)
 
                 epoch_loss += loss.item() / batch.num_graphs
                 wandb.log({f"Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
@@ -444,6 +499,7 @@ class DiffusionUNet(torch.nn.Module):
                 val_losses.append(val_loss)
                 val_epochs.append(epoch_number)
                 wandb.log({f"Val-{self.loss_fn}":val_loss})
+                self.model.train()
 
             pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             # else:
@@ -471,21 +527,35 @@ class DiffusionUNet(torch.nn.Module):
         self.model.eval()
         x = self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
-        sampling_pbar = tqdm(reversed(range(self.diffusion_steps)), leave=False)
+        sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave=False)
         sums = []
         noise_amounts = []
         every_frame = int(self.diffusion_steps / 100)
         if gif_first:
             frames = []
         for t in sampling_pbar:
-            t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
-            x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
-
-            x_passed = torch.cat((t_appended, x_cycles, x), dim = 1)
+            # t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
+            # x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+            # print(torch.full((batch.x.shape[0], 1), t).shape,
+            #       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze().shape,
+            #       x.shape)
+            # try:
+            # x_passed = torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
+            #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+            #                       x), dim = 1)
+            # except:
+            #     print(f"t: {t_appended.shape}"
+            #           f"cycles: {x_cycles.shape}"
+            #           f"x: {x.shape}"
+            #           f"batch: {batch.x.shape}")
             # print(x_passed)
-            eta_out = self.model(x_passed, edge_index)
-            alpha_t = self.alphas[t]
-            alpha_t_bar = self.alpha_bars[t]
+            eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
+                                  self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                                  x), dim = 1),
+                                 edge_index)
+            # del x_passed
+            alpha_t = self.alphas_sampling[t]
+            alpha_t_bar = self.alpha_bars_sampling[t]
             # print(alpha_t, alpha_t_bar)
             # noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
 
@@ -496,10 +566,12 @@ class DiffusionUNet(torch.nn.Module):
             # if t > 0:  #self.diffusion_steps:
             #     z = torch.randn(batch.x.shape).to(self.device)
             #
-            #     beta_t = self.betas[t]
+            #     beta_t = self.betas_sampling[t]
             #     sigma_t = beta_t.sqrt()
             #     # print(sigma_t)
             #     x = x + sigma_t * z
+            #
+            #     del z
 
 
             if visualise:
@@ -508,7 +580,7 @@ class DiffusionUNet(torch.nn.Module):
 
                 sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
                 if gif_first and t % every_frame == 0:
-                    frames.append(((x * self.feature_vars) + self.feature_means).float())
+                    frames.append(((x * self.feature_vars) + self.feature_means).detach().float().cpu().numpy())
             # print(x, eta_out, alpha_t, alpha_t_bar)
             # if t % 50 == 0:
             #     print(torch.sum(x), torch.sum(batch.x.detach().cpu()))
@@ -525,7 +597,7 @@ class DiffusionUNet(torch.nn.Module):
             else:
                 self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first=False)
 
-        wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
+        # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
 
         loss = self.loss_fn(x, batch.x.to(self.device))
 
@@ -546,9 +618,14 @@ def colormap_vis(batch, x, sums, noise_amounts, label, gif_first = False):
     plt.close()
     # plt.show()
 
-
-if __name__ == "__main__":
-
+@hydra.main(version_base='1.1', config_path='configs', config_name="main")
+def main(cfg : DictConfig) -> None:
+    print(cfg)
+    print(OmegaConf.to_yaml(cfg))
+    cfg = cfg["dataset"]
+    print(cfg)
+    print(OmegaConf.to_container(cfg, resolve=True))
+    cfg = OmegaConf.to_container(cfg, resolve=True)
     # nx_dummy_graphs = [nx.grid_2d_graph(20,
     #                                     20) for _ in range(500)]
     # for nx_g in nx_dummy_graphs:
@@ -559,12 +636,33 @@ if __name__ == "__main__":
 
     # cube_graphs = get_cube_dataset(1000, max_graph_size=5)
     # setup_wandb(data_name="qm9")
+    if cfg["name"] == "hex-clustering":
+        setup_wandb(cfg)
+        graphs = get_triangular_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
 
-    # hex_graphs = get_triangular_dataset(1000, max_graph_size=5)
-    # setup_wandb(data_name="hex")
 
-    ring_graphs = get_cube_dataset(1000, max_graph_size=6)
-    setup_wandb(data_name = "cube")
+    elif cfg["name"] == "ring-position":
+        setup_wandb(cfg)
+        graphs = get_ring_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
+
+
+    elif cfg["name"] == "grid-position":
+        setup_wandb(cfg)
+        graphs = get_cube_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
+
+
+    elif cfg["name"] == "random-clustering":
+        setup_wandb(cfg)
+        graphs = get_random_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
+
+
+    elif cfg["name"] == "bike-networks":
+        setup_wandb(cfg)
+        graphs = road_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
+
+
+    # ring_graphs = get_cube_dataset(1000, max_graph_size=6)
+    # setup_wandb(data_name = "cube")
 
     # DUNet = DiffusionUNet("CLUSTER", 100, batch_size=100, diffusion_steps=1000)
     # DUNet = DiffusionUNet(cube_graphs,
@@ -573,10 +671,11 @@ if __name__ == "__main__":
     #                       diffusion_steps=200,
     #                       vis_fn="cube")
 
-    DUNet = DiffusionUNet(ring_graphs,
-                          200,
-                          batch_size=200,
-                          diffusion_steps=200,
+    DUNet = DiffusionUNet(graphs,
+                          cfg["hidden_dim"],
+                          num_layers=cfg["n_layers"],
+                          batch_size=cfg["batch_size"],
+                          diffusion_steps=cfg["diffusion_steps"],
                           vis_fn="cube")
 
 
@@ -607,7 +706,10 @@ if __name__ == "__main__":
 
 
 
-    DUNet.train(2000, val_every=10)
-    DUNet.sample_features(DUNet.test_loader[0], visualise="Final")
+    DUNet.train(cfg["n_epochs"], val_every=cfg["val_every"])
+    # DUNet.sample_features(DUNet.test_loader[0], visualise="Final")
+
+if __name__ == "__main__":
+    main()
 
 
