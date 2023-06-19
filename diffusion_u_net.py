@@ -21,8 +21,13 @@ from gat import GAT, EdgeCNN
 # print(os.getcwd())
 # print(os.listdir())
 # os.chdir("../")
+from ToyDatasets import *
+from Metrics import *
 from Datasets import *
 # os.chdir("graph-2-graph")
+
+import sys,os
+sys.path.append(os.getcwd())
 
 
 
@@ -174,14 +179,15 @@ def setup_wandb(cfg):
 
 class DiffusionUNet(torch.nn.Module):
     def __init__(self, nx_graph_list, hidden_dim, extra_features = "cycles",
-                 val_prop = 0.05, test_prop = 0.2, batch_size = 100,
+                 val_prop = 0.1, test_prop = 0.2, batch_size = 100,
                  min_beta = 10 ** -6, max_beta = 0.01, num_layers = 1,
                  min_beta_sampling = 10**-4, max_beta_sampling = 0.09,
                  diffusion_steps = 2000, diffusion_steps_sampling = 1000, use_wandb = True,
-                 vis_fn = "colormap", output_dir = "outputs"):
+                 vis_fn = "colormap", output_dir = "outputs", val_fn = None):
         super(DiffusionUNet, self).__init__()
 
 
+        self.val_fn = None
 
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -247,11 +253,11 @@ class DiffusionUNet(torch.nn.Module):
             self.extra_features = SimpleNodeCycleFeatures()# ExtraFeatures()
             self.features_dim = 4
 
-        # self.model = GraphUNet(in_channels=self.x_dim + 1 + self.features_dim, # Currently passing t as a node-level feature
-        #                          hidden_channels=hidden_dim,
-        #                          out_channels=self.x_dim,
-        #                          depth=num_layers,
-        #                          pool_ratios=0.5).to(self.device)
+        self.model = GraphUNet(in_channels=self.x_dim + 1 + self.features_dim, # Currently passing t as a node-level feature
+                                 hidden_channels=hidden_dim,
+                                 out_channels=self.x_dim,
+                                 depth=num_layers,
+                                 pool_ratios=0.25).to(self.device)
 
         # self.model = EdgeCNN(in_channels = self.x_dim + 1 + self.features_dim, # +1 for timesteps, +3 for cycles
         #                  out_channels= self.x_dim,
@@ -266,10 +272,10 @@ class DiffusionUNet(torch.nn.Module):
         # else:
         #     self.ema_scheduler = None
 
-        self.model = GAT(in_channels = self.x_dim + self.features_dim + 1, # +1 for timesteps
-                         out_channels= self.x_dim,
-                         hidden_channels=hidden_dim,
-                         num_layers = num_layers).to(self.device)
+        # self.model = GAT(in_channels = self.x_dim + self.features_dim + 1, # +1 for timesteps
+        #                  out_channels= self.x_dim,
+        #                  hidden_channels=hidden_dim,
+        #                  num_layers = num_layers).to(self.device)
 
         self.loss_fn = torch.nn.MSELoss(reduction="mean")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
@@ -278,9 +284,13 @@ class DiffusionUNet(torch.nn.Module):
 
         self.diffusion_steps = diffusion_steps
         self.diffusion_steps_sampling = diffusion_steps_sampling
-
-        if vis_fn != "colormap":
+        if vis_fn == "pca":
+            self.val_class = ContinuousVectorMetrics()
+            self.vis_fn = self.val_class.vis_batch
+            self.val_fn = self.val_class.batch_vector_similarity
+        elif vis_fn != "colormap":
             self.vis_fn = cube_val_vis
+
         else:
             self.vis_fn = colormap_vis
 
@@ -426,13 +436,13 @@ class DiffusionUNet(torch.nn.Module):
 
         return loss
 
-    def train(self, n_epochs, val_every = 25, gif_first = True):
+    def train(self, n_epochs, val_every = 25, gif_first = False):
         self.model.train()
 
         pbar = tqdm(range(n_epochs))
 
         losses = []
-        val_losses, val_epochs = [], []
+        # val_losses, val_epochs = [], []
         for epoch_number, epoch in enumerate(pbar):
 
             epoch_loss = 0.0
@@ -479,27 +489,16 @@ class DiffusionUNet(torch.nn.Module):
                 #         self.EMA.update_model_average(self.netG_EMA, self.model)
 
                 epoch_loss += loss.item() / batch.num_graphs
-                wandb.log({f"Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
+                wandb.log({f"Train/Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
 
-            wandb.log({f"{self.loss_fn}":epoch_loss})
+            wandb.log({f"Train/{self.loss_fn}":epoch_loss})
 
 
             if epoch_number  % val_every == 0 or epoch_number == n_epochs - 1:
-                if "val_vis" not in os.listdir():
-                    os.mkdir("val_vis")
-                val_loss = 0.0
-                for ib_val, val_batch in enumerate(self.val_loader):
-                    if ib_val == 0:
-                        val_batch_loss = self.sample_features(val_batch, visualise=f"val_vis/Epoch_{epoch_number}", gif_first=gif_first)
-                    else:
-                        val_batch_loss = self.sample_features(val_batch)
-
-
-                    val_loss += val_batch_loss.item() / val_batch.num_graphs
-                val_losses.append(val_loss)
-                val_epochs.append(epoch_number)
-                wandb.log({f"Val-{self.loss_fn}":val_loss})
-                self.model.train()
+                val_loss = self.validation_epoch(gif_first = gif_first,
+                                                 epoch_number = epoch_number)
+                # val_epochs.append(epoch_number)
+                # val_losses.append(val_loss)
 
             pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             # else:
@@ -511,19 +510,53 @@ class DiffusionUNet(torch.nn.Module):
 
 
 
-        plt.plot(losses, label = "Train Losses")
-        plt.plot(val_epochs, val_losses, label = "Validation Losses (between x)")
-        plt.yscale('log')
-        plt.legend(shadow=True)
-        plt.savefig("Losses.png")
+        # plt.plot(losses, label = "Train Losses")
+        # plt.plot(val_epochs, val_losses, label = "Validation Losses (between x)")
+        # plt.yscale('log')
+        # plt.legend(shadow=True)
+        # plt.savefig("Losses.png")
 
+    def validation_epoch(self, gif_first = False, epoch_number = 0):
+        if "val_vis" not in os.listdir():
+            os.mkdir("val_vis")
+        val_loss = 0.0
+        mean_val_metric = 0.
+
+        if self.val_class is not None:
+            val_metric, val_loss = self.val_class.validation_by_item(self.val_loader, self, epoch_number=epoch_number)
+        else:
+            for ib_val, val_batch in enumerate(self.val_loader):
+
+                if ib_val == 0:
+                    val_batch_loss, x_pred = self.sample_features(val_batch, visualise=f"val_vis/Epoch_{epoch_number}",
+                                                                  gif_first=gif_first)
+                else:
+                    val_batch_loss, x_pred = self.sample_features(val_batch)
+
+                print(x_pred.shape)
+
+                # if self.val_fn is not None:
+                #     val_metric = self.val_fn(val_batch, x_pred).item()
+                #     mean_val_metric += val_metric / val_batch.num_graphs
+                #     # wandb.log({"Validation/Similarity": val_metric})
+
+                val_loss += val_batch_loss.item() / val_batch.num_graphs
+
+        wandb.log({"Similarity": val_metric})
+        wandb.log({f"Val-{self.loss_fn}": val_loss})
+
+        # wandb.log({"Validation/Similarity": val_metric})
+        # wandb.log({f"Validation/Val-{self.loss_fn}": val_loss})
+        self.model.train()
+
+        return val_loss
 
     def sample_noise_limit(self, x_shape):
         eta = torch.randn(x_shape).to(self.device)
 
         return eta
 
-    def sample_features(self, batch, visualise = None, gif_first = True):
+    def sample_features(self, batch, visualise = None, gif_first = False):
         self.model.eval()
         x = self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
@@ -601,7 +634,9 @@ class DiffusionUNet(torch.nn.Module):
 
         loss = self.loss_fn(x, batch.x.to(self.device))
 
-        return loss
+
+
+        return loss, x
 
 
 
@@ -620,12 +655,13 @@ def colormap_vis(batch, x, sums, noise_amounts, label, gif_first = False):
 
 @hydra.main(version_base='1.1', config_path='configs', config_name="main")
 def main(cfg : DictConfig) -> None:
-    print(cfg)
-    print(OmegaConf.to_yaml(cfg))
-    cfg = cfg["dataset"]
-    print(cfg)
-    print(OmegaConf.to_container(cfg, resolve=True))
+    # print(cfg)
+    # print(OmegaConf.to_yaml(cfg))
+    # cfg = cfg["dataset"]
+    # print(cfg)
+    # print(OmegaConf.to_container(cfg, resolve=True))
     cfg = OmegaConf.to_container(cfg, resolve=True)
+    print(cfg)
     # nx_dummy_graphs = [nx.grid_2d_graph(20,
     #                                     20) for _ in range(500)]
     # for nx_g in nx_dummy_graphs:
@@ -660,6 +696,11 @@ def main(cfg : DictConfig) -> None:
         setup_wandb(cfg)
         graphs = road_dataset(int(cfg["n_samples"]), max_graph_size=cfg["max_size"])
 
+    elif cfg["name"] == "reddit":
+        reddit_graph = download_reddit()
+        setup_wandb(cfg)
+        graphs = ESWR(reddit_graph, 100, 128)
+
 
     # ring_graphs = get_cube_dataset(1000, max_graph_size=6)
     # setup_wandb(data_name = "cube")
@@ -676,7 +717,8 @@ def main(cfg : DictConfig) -> None:
                           num_layers=cfg["n_layers"],
                           batch_size=cfg["batch_size"],
                           diffusion_steps=cfg["diffusion_steps"],
-                          vis_fn="cube")
+                          diffusion_steps_sampling=cfg["diffusion_steps_sampling"],
+                          vis_fn="pca")
 
 
 

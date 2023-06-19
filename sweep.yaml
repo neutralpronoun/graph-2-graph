@@ -1,0 +1,43 @@
+method: bayes
+metric:
+  goal: maximize
+  name: Similarity
+parameters:
+  batch_size:
+    distribution: int_uniform
+    max: 48
+    min: 8
+  diffusion_steps:
+    distribution: int_uniform
+    max: 3000
+    min: 100
+  hidden_dim:
+    distribution: int_uniform
+    max: 256
+    min: 8
+  max_size:
+    distribution: int_uniform
+    max: 64
+    min: 48
+  n_epochs:
+    distribution: int_uniform
+    max: 10002
+    min: 10000
+  n_layers:
+    distribution: int_uniform
+    max: 5
+    min: 1
+  name:
+    distribution: categorical
+    values:
+      - reddit
+  val_every:
+    distribution: int_uniform
+    max: 501
+    min: 500
+program: diffusion_u_net.py
+
+command:
+    - python
+    - ${program}
+    - ${args_no_hyphens}
