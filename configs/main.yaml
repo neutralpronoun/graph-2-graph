@@ -5,7 +5,7 @@ name: reddit
 output_dir: outputs
 
 
-n_samples : 2500
+n_samples : 1024
 max_size  : 48
 val_prop: 0.01
 test_prop: 0.1
