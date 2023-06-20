@@ -178,14 +178,28 @@ def setup_wandb(cfg):
 #         return old * self.beta + (1 - self.beta) * new
 
 class DiffusionUNet(torch.nn.Module):
-    def __init__(self, nx_graph_list, hidden_dim, extra_features = "cycles",
-                 val_prop = 0.1, test_prop = 0.2, batch_size = 100,
-                 min_beta = 10 ** -6, max_beta = 0.01, num_layers = 1,
-                 min_beta_sampling = 10**-4, max_beta_sampling = 0.09,
-                 diffusion_steps = 2000, diffusion_steps_sampling = 1000, use_wandb = True,
-                 vis_fn = "colormap", output_dir = "outputs", val_fn = None):
+    def __init__(self, nx_graph_list, cfg):
         super(DiffusionUNet, self).__init__()
 
+        batch_size = int(cfg["batch_size"])
+        val_prop = float(cfg["val_prop"])
+        test_prop = float(cfg["test_prop"])
+
+        hidden_dim = int(cfg["hidden_dim"])
+        num_layers = int(cfg["n_layers"])
+        extra_features = cfg["extra_features"]
+
+
+        min_beta, max_beta = float(cfg["min_beta"]), float(cfg["max_beta"])
+        min_beta_sampling, max_beta_sampling = float(cfg["min_beta_sampling"]), float(cfg["max_beta_sampling"])
+
+        diffusion_steps = int(cfg["diffusion_steps"])
+        diffusion_steps_sampling = int(cfg["diffusion_steps_sampling"])
+
+        if diffusion_steps_sampling >= diffusion_steps:
+            diffusion_steps_sampling = diffusion_steps - 1
+
+        vis_fn = "pca"
 
         self.val_fn = None
 
@@ -238,7 +252,9 @@ class DiffusionUNet(torch.nn.Module):
             n_graphs = len(nx_graph_list)
             n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
-            print(list(nx_graph_list[0].nodes(data=True)))
+
+            print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
+            # print(list(nx_graph_list[0].nodes(data=True)))
             self.x_dim = list(nx_graph_list[0].nodes(data=True))[0][1]["attrs"].shape[0]
 
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
@@ -312,6 +328,8 @@ class DiffusionUNet(torch.nn.Module):
                 self.val_loader = self.val_loader.to_datapipe().batch_graphs(batch_size=2)
             except:
                 pass
+
+        quit()
         # print(f"Noise schedule: {self.sigmas}")
 
 
@@ -699,7 +717,7 @@ def main(cfg : DictConfig) -> None:
     elif cfg["name"] == "reddit":
         reddit_graph = download_reddit()
         setup_wandb(cfg)
-        graphs = ESWR(reddit_graph, 100, 128)
+        graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
 
 
     # ring_graphs = get_cube_dataset(1000, max_graph_size=6)
@@ -712,13 +730,8 @@ def main(cfg : DictConfig) -> None:
     #                       diffusion_steps=200,
     #                       vis_fn="cube")
 
-    DUNet = DiffusionUNet(graphs,
-                          cfg["hidden_dim"],
-                          num_layers=cfg["n_layers"],
-                          batch_size=cfg["batch_size"],
-                          diffusion_steps=cfg["diffusion_steps"],
-                          diffusion_steps_sampling=cfg["diffusion_steps_sampling"],
-                          vis_fn="pca")
+    DUNet = DiffusionUNet(graphs, cfg)
+
 
 
 

@@ -3,38 +3,30 @@ metric:
   goal: maximize
   name: Similarity
 parameters:
-  batch_size:
-    distribution: int_uniform
-    max: 48
-    min: 8
   diffusion_steps:
     distribution: int_uniform
     max: 3000
-    min: 100
-  hidden_dim:
+    min: 300
+  diffusion_steps_sampling:
     distribution: int_uniform
-    max: 256
-    min: 8
-  max_size:
-    distribution: int_uniform
-    max: 64
-    min: 48
-  n_epochs:
-    distribution: int_uniform
-    max: 10002
-    min: 10000
-  n_layers:
-    distribution: int_uniform
-    max: 5
-    min: 1
-  name:
-    distribution: categorical
-    values:
-      - reddit
-  val_every:
-    distribution: int_uniform
-    max: 501
-    min: 500
+    max: 2000
+    min: 150
+  min_beta:
+    distribution: uniform
+    max: 10e-4
+    min: 10e-8
+  min_beta_sampling:
+    distribution: uniform
+    max: 10e-2
+    min: 10e-6
+  max_beta:
+    distribution: uniform
+    max: 0.1
+    min: 0.001
+  max_beta_sampling:
+    distribution: uniform
+    max: 0.5
+    min: 0.01
 program: diffusion_u_net.py
 
 command:
