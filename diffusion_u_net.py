@@ -329,7 +329,7 @@ class DiffusionUNet(torch.nn.Module):
             except:
                 pass
 
-        quit()
+        # quit()
         # print(f"Noise schedule: {self.sigmas}")
 
 
