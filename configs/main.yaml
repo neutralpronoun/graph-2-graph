@@ -10,7 +10,7 @@ max_size  : 48
 val_prop: 0.01
 test_prop: 0.1
 n_epochs : 5000
-batch_size : 96
+batch_size : 48
 val_every  : 500
 
 n_layers : 5
