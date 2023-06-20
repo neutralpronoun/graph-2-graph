@@ -260,7 +260,7 @@ class DiffusionUNet(torch.nn.Module):
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
                                                batch_size=batch_size)
             self.val_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in val_graphs],
-                                               batch_size=int(batch_size/10))
+                                               batch_size=int(batch_size/4))
             self.test_loader = [pyg.utils.from_networkx(g, group_node_attrs=all) for g in test_graphs]
 
 

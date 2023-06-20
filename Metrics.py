@@ -97,7 +97,7 @@ class ContinuousVectorMetrics:
         return self.vector_similarity(batch.x, x)
 
     def vector_similarity(self, true, pred):
-        sim = self.sim_fn(true.cpu(), pred.cpu(), dim=0)
+        sim = self.sim_fn(true.cpu(), pred.cpu(), dim=1)
         return torch.mean(sim)
 
     # self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first = frames)
