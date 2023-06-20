@@ -604,6 +604,8 @@ class DiffusionUNet(torch.nn.Module):
                                   self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                   x), dim = 1),
                                  edge_index)
+
+
             # del x_passed
             alpha_t = self.alphas_sampling[t]
             alpha_t_bar = self.alpha_bars_sampling[t]
@@ -630,8 +632,8 @@ class DiffusionUNet(torch.nn.Module):
                 noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
 
                 sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-                if gif_first and t % every_frame == 0:
-                    frames.append(((x * self.feature_vars) + self.feature_means).detach().float().cpu().numpy())
+                # if gif_first and t % every_frame == 0:
+                #     frames.append(((x * self.feature_vars) + self.feature_means).detach().float().cpu().numpy())
             # print(x, eta_out, alpha_t, alpha_t_bar)
             # if t % 50 == 0:
             #     print(torch.sum(x), torch.sum(batch.x.detach().cpu()))
@@ -651,6 +653,8 @@ class DiffusionUNet(torch.nn.Module):
         # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
 
         loss = self.loss_fn(x, batch.x.to(self.device))
+        batch.x = batch.x.to("cpu")
+        x = x.to("cpu")
 
 
 

@@ -43,7 +43,7 @@ class ContinuousVectorMetrics:
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
-                x_trues += [example.cpu()]
+                x_trues += [example.detach().cpu().numpy()]
                 x_slicing_indices += [example.shape[0]]
 
 
@@ -56,14 +56,16 @@ class ContinuousVectorMetrics:
             #                                            visualise = f"val_vis/Epoch_{epoch_number}",
             #                                             gif_first = False)
             # else:
-            loss, x_pred = wrapper.sample_features(batch, visualise = None, gif_first = False)
+            loss, x_pred = wrapper.sample_features(batch,
+                                                   visualise = None,
+                                                   gif_first = False)
 
             total_loss += loss.item() / batch.num_graphs
 
             running_count = 0
             for indices in x_slicing_indices:
-                print(x_pred.shape, indices, running_count, running_count + indices)
-                x_preds += [x_pred[running_count:running_count+indices, :].cpu()]
+                # print(x_pred.shape, indices, running_count, running_count + indices)
+                x_preds += [x_pred[running_count:running_count+indices, :].detach().cpu().numpy()]
                 running_count += indices
 
         # x_trues = torch.cat(x_trues, dim=0)
@@ -139,14 +141,14 @@ class ContinuousVectorMetrics:
             was_given_ax = True
 
         # print(true)
-        mean, var = np.mean(true.numpy(), axis = 0), np.std(true.numpy(), axis = 0)
-        mean = np.tile(mean, (true.shape[0], 1))
-        var = np.tile(var, (true.shape[0], 1))
-        random = np.random.randn(*true.numpy().shape)
-        # print(random.shape, mean.shape, var.shape)
-        random = random * var
-        random = random + mean
-        random_projection = self.decomp.transform(random)
+        # mean, var = np.mean(true.numpy(), axis = 0), np.std(true.numpy(), axis = 0)
+        # mean = np.tile(mean, (true.shape[0], 1))
+        # var = np.tile(var, (true.shape[0], 1))
+        # random = np.random.randn(*true.numpy().shape)
+        # # print(random.shape, mean.shape, var.shape)
+        # random = random * var
+        # random = random + mean
+        # random_projection = self.decomp.transform(random)
 
 
         kdeplot(x = true_projection[:,0], y =  true_projection[:,1], color = "blue", ax = ax, alpha = 0.5, levels=5)
@@ -159,7 +161,7 @@ class ContinuousVectorMetrics:
         ylim = ax.get_ylim()
 
         # kdeplot(x = random_projection[:,0], y =  random_projection[:,1], color="black", ax=ax, alpha = 0.25, levels=5)
-        ax.scatter(*random_projection.T, label = "random data", c = "black", marker = "o", s = 3, alpha = 0.5, zorder = 0)
+        # ax.scatter(*random_projection.T, label = "random data", c = "black", marker = "o", s = 3, alpha = 0.5, zorder = 0)
 
         for line in ax.get_lines():
             line.set_alpha(0.5)
