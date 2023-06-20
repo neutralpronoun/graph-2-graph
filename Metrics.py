@@ -39,7 +39,7 @@ class ContinuousVectorMetrics:
         total_loss = 0.
         for ib, batch in enumerate(loader):
             n_graphs = batch.num_graphs
-            # print(f"batch has {n_graphs} graphs")
+            print(f"batch has {n_graphs} graphs")
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
