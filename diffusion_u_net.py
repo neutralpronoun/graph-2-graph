@@ -644,11 +644,11 @@ class DiffusionUNet(torch.nn.Module):
 
 
 
-        if visualise is not None:
-            if gif_first:
-                self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first = frames)
-            else:
-                self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first=False)
+        # if visualise is not None:
+        #     if gif_first:
+        #         self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first = frames)
+        #     else:
+        #         self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first=False)
 
         # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
 

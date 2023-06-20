@@ -37,9 +37,9 @@ class ContinuousVectorMetrics:
         x_preds = []
 
         total_loss = 0.
-        for ib, batch in enumerate(loader):
+        for ib, batch in enumerate(tqdm(loader, leave=False)):
             n_graphs = batch.num_graphs
-            print(f"batch has {n_graphs} graphs")
+            # print(f"batch has {n_graphs} graphs")
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
@@ -65,17 +65,17 @@ class ContinuousVectorMetrics:
 
             running_count = 0
             for indices in x_slicing_indices:
-                print(x_pred.shape, indices, running_count, running_count + indices)
-                x_pred = x_pred[running_count:running_count+indices, :]
+                # print(x_pred.shape, indices, running_count, running_count + indices)
+                i_x_pred = x_pred[running_count:running_count+indices, :]
                 # print(x_pred)
-                x_preds += [x_pred.detach().cpu()]
+                x_preds += [i_x_pred.detach().cpu()]
                 running_count += indices
 
         # x_trues = torch.cat(x_trues, dim=0)
         # print(x_trues[0], x_preds[0])
         x_trues = torch.cat(x_trues, dim = 0)
         x_preds = torch.cat(x_preds, dim = 0)
-        print(x_preds.shape, x_trues.shape)
+        # print(x_preds.shape, x_trues.shape)
         sim = self.vector_similarity(x_trues, x_preds)
 
 
