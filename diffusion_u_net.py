@@ -653,8 +653,8 @@ class DiffusionUNet(torch.nn.Module):
         # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
 
         loss = self.loss_fn(x, batch.x.to(self.device))
-        batch.x = batch.x.to("cpu")
-        x = x.to("cpu")
+        # batch.x = batch.x.to("cpu")
+        # x = x.to("cpu")
 
 
 
