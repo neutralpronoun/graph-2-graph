@@ -43,7 +43,7 @@ class ContinuousVectorMetrics:
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
-                x_trues += [example.detach().cpu().numpy()]
+                x_trues += [example.detach().cpu()]
                 x_slicing_indices += [example.shape[0]]
 
 
@@ -65,7 +65,7 @@ class ContinuousVectorMetrics:
             running_count = 0
             for indices in x_slicing_indices:
                 # print(x_pred.shape, indices, running_count, running_count + indices)
-                x_preds += [x_pred[running_count:running_count+indices, :].detach().cpu().numpy()]
+                x_preds += [x_pred[running_count:running_count+indices, :].detach().cpu()]
                 running_count += indices
 
         # x_trues = torch.cat(x_trues, dim=0)
