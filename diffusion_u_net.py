@@ -190,8 +190,8 @@ class DiffusionUNet(torch.nn.Module):
         extra_features = cfg["extra_features"]
 
 
-        min_beta, max_beta = float(cfg["min_beta"]), float(cfg["max_beta"])
-        min_beta_sampling, max_beta_sampling = float(cfg["min_beta_sampling"]), float(cfg["max_beta_sampling"])
+        min_beta, max_beta = 10**float(cfg["min_beta"]), 10**float(cfg["max_beta"])
+        min_beta_sampling, max_beta_sampling = 10**float(cfg["min_beta_sampling"]), 10**float(cfg["max_beta_sampling"])
 
         diffusion_steps = int(cfg["diffusion_steps"])
         diffusion_steps_sampling = int(cfg["diffusion_steps_sampling"])

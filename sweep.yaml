@@ -13,20 +13,20 @@ parameters:
     min: 150
   min_beta:
     distribution: uniform
-    max: 10e-4
-    min: 10e-8
+    max: -4.
+    min: -8.
   min_beta_sampling:
     distribution: uniform
-    max: 10e-2
-    min: 10e-6
+    max: -2.
+    min: -6.
   max_beta:
     distribution: uniform
-    max: 0.1
-    min: 0.001
+    max: -1.
+    min: -3.
   max_beta_sampling:
     distribution: uniform
-    max: 0.5
-    min: 0.01
+    max: 0.
+    min: -2.
 program: diffusion_u_net.py
 
 command:
