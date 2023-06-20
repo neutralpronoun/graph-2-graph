@@ -43,7 +43,7 @@ class ContinuousVectorMetrics:
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
-                print(example.shape)
+                # print(example.shape)
                 x_trues += [example.detach().cpu()]
                 x_slicing_indices += [example.shape[0]]
 
