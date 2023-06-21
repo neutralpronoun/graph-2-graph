@@ -2,6 +2,9 @@ method: bayes
 metric:
   goal: minimise
   name: Val-MSELoss()
+early_terminate:
+  type: hyperband
+  min_iter: 1
 parameters:
   diffusion_steps:
     distribution: int_uniform

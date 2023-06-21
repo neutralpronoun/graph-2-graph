@@ -153,7 +153,7 @@ class SimpleNodeCycleFeatures:
         return x_cycles, y_cycles
 
 def setup_wandb(cfg):
-    print(OmegaConf.to_yaml(cfg))
+    # print(OmegaConf.to_yaml(cfg))
     data_name = cfg["name"]
     kwargs = {'name': f"{data_name}-" + datetime.datetime.now().strftime("%m-%d-%Y-%H-%M-%S"), 'project': f'Graph-2-Graph',
               'settings': wandb.Settings(_disable_stats=False), 'reinit': True, 'entity':'hierarchical-diffusion'}
@@ -253,7 +253,7 @@ class DiffusionUNet(torch.nn.Module):
             n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
 
-            print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
+            # print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
             # print(list(nx_graph_list[0].nodes(data=True)))
             self.x_dim = list(nx_graph_list[0].nodes(data=True))[0][1]["attrs"].shape[0]
 
@@ -370,8 +370,8 @@ class DiffusionUNet(torch.nn.Module):
         if torch.sum(torch.abs(self.feature_means)) < 1e-3:
             self.feature_means = self.feature_means / self.feature_means
 
-        print(f"Found feature means: {self.feature_means}")
-        print(f"Found feature variances: {self.feature_vars}")
+        print(f"Found feature means with dim: {self.feature_means.shape}")
+        print(f"Found feature variances with dim: {self.feature_vars.shape}")
 
 
 
@@ -401,7 +401,7 @@ class DiffusionUNet(torch.nn.Module):
         plt.legend(shadow=True)
         plt.savefig("Noise_Schedule.png")
         plt.close()
-        print(self.alpha_bars)
+        # print(self.alpha_bars)
 
         # return fn
 
@@ -551,7 +551,7 @@ class DiffusionUNet(torch.nn.Module):
                 else:
                     val_batch_loss, x_pred = self.sample_features(val_batch)
 
-                print(x_pred.shape)
+                # print(x_pred.shape)
 
                 # if self.val_fn is not None:
                 #     val_metric = self.val_fn(val_batch, x_pred).item()
