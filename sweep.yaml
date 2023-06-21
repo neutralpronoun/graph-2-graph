@@ -1,10 +1,10 @@
 method: bayes
 metric:
-  goal: minimise
+  goal: minimize
   name: Val-MSELoss()
 early_terminate:
   type: hyperband
-  min_iter: 1
+  min_iter: 3
 parameters:
   diffusion_steps:
     distribution: int_uniform
