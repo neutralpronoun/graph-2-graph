@@ -24,4 +24,5 @@ min_beta_sampling: -4
 max_beta_sampling: -2
 diffusion_steps: 2000
 diffusion_steps_sampling: 1000
+distribution_weighting: 1.
 
