@@ -18,6 +18,7 @@ min_beta_sampling: 10**-4
 max_beta_sampling: 0.09
 diffusion_steps: 2000
 diffusion_steps_sampling: 2000
+distribution_weighting: 1.
 
 n_epochs : 5000
 batch_size : 48

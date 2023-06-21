@@ -9,11 +9,11 @@ parameters:
   diffusion_steps:
     distribution: int_uniform
     max: 3000
-    min: 300
+    min: 500
   diffusion_steps_sampling:
     distribution: int_uniform
     max: 2000
-    min: 150
+    min: 500
   min_beta:
     distribution: uniform
     max: -4.
@@ -28,7 +28,7 @@ parameters:
     min: -3.
   max_beta_sampling:
     distribution: uniform
-    max: 0.
+    max: -0.5
     min: -2.
 program: diffusion_u_net.py
 

@@ -202,6 +202,7 @@ class DiffusionUNet(torch.nn.Module):
         vis_fn = "pca"
 
         self.val_fn = None
+        self.dist_weighting = cfg["distribution_weighting"]
 
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -651,8 +652,14 @@ class DiffusionUNet(torch.nn.Module):
         #         self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first=False)
 
         # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
+        # print(x.shape)
+        # quit()
+        node_loss = self.loss_fn(x, batch.x.to(self.device))
+        distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to(self.device), dim=0))
+        loss = node_loss + self.dist_weighting * distribution_loss
 
-        loss = self.loss_fn(x, batch.x.to(self.device))
+        wandb.log({f"Node-{self.loss_fn}":node_loss,
+                   f"Component-Mean-{self.loss_fn}": distribution_loss})
         # batch.x = batch.x.to("cpu")
         # x = x.to("cpu")
 
