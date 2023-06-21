@@ -7,7 +7,7 @@ output_dir: outputs
 
 n_samples : 1024
 max_size  : 48
-val_prop: 0.01
+val_prop: 0.025
 test_prop: 0.1
 n_epochs : 5000
 batch_size : 36

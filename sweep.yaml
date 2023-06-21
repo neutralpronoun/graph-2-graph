@@ -1,7 +1,7 @@
 method: bayes
 metric:
-  goal: maximize
-  name: Similarity
+  goal: minimise
+  name: Val-MSELoss()
 parameters:
   diffusion_steps:
     distribution: int_uniform
