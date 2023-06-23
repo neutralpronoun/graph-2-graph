@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from torch import Tensor
+from torch.autograd import Function
+from typing import Any, List, Optional, Union
+import scipy
 import torch_geometric as pyg
 from tqdm import tqdm
 from torch_geometric.utils.convert import to_networkx
@@ -17,6 +21,57 @@ from sklearn.manifold import Isomap
 from umap import UMAP
 from seaborn import kdeplot
 
+
+
+
+def colormap_vis(batch, x, sums, noise_amounts, label, gif_first = False):
+    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
+
+    ax1.imshow(batch.x.detach().cpu())  # , vmin = 0, vmax = 1)
+    ax2.imshow(x.detach().cpu())  # , vmin = 0, vmax = 1)
+    ax3.plot(sums, label="x")
+    ax3.plot(noise_amounts, label="eta")
+    ax3.legend(shadow=True)
+
+    plt.savefig(f"{label}.png")
+    plt.close()
+    # plt.show()
+
+class MatrixSquareRoot(Function):
+    """Square root of a positive definite matrix.
+
+    All credit to `Square Root of a Positive Definite Matrix`_
+    """
+
+    @staticmethod
+    def forward(ctx: Any, input_data: Tensor) -> Tensor:
+        # TODO: update whenever pytorch gets an matrix square root function
+        # Issue: https://github.com/pytorch/pytorch/issues/9983
+        m = input_data.detach().cpu().numpy().astype(np.float_)
+        scipy_res, _ = scipy.linalg.sqrtm(m, disp=False)
+        sqrtm = torch.from_numpy(scipy_res.real).to(input_data)
+        ctx.save_for_backward(sqrtm)
+        return sqrtm
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: Tensor) -> Tensor:
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            (sqrtm,) = ctx.saved_tensors
+            sqrtm = sqrtm.data.cpu().numpy().astype(np.float_)
+            gm = grad_output.data.cpu().numpy().astype(np.float_)
+
+            # Given a positive semi-definite matrix X,
+            # since X = X^{1/2}X^{1/2}, we can compute the gradient of the
+            # matrix square root dX^{1/2} by solving the Sylvester equation:
+            # dX = (d(X^{1/2})X^{1/2} + X^{1/2}(dX^{1/2}).
+            grad_sqrtm = scipy.linalg.solve_sylvester(sqrtm, sqrtm, gm)
+
+            grad_input = torch.from_numpy(grad_sqrtm).to(grad_output)
+        return grad_input
+
+
+sqrtm = MatrixSquareRoot.apply
 
 class ContinuousVectorMetrics:
     def __init__(self,
@@ -77,6 +132,10 @@ class ContinuousVectorMetrics:
         x_preds = torch.cat(x_preds, dim = 0)
         # print(x_preds.shape, x_trues.shape)
         sim = self.vector_similarity(x_trues, x_preds)
+        wass = self.MeanWasserstein(x_trues, x_preds)
+
+        metrics = {"Similarity":sim,
+                   "Wasserstein":wass}
 
 
         if not self.decomp_fitted:
@@ -86,7 +145,58 @@ class ContinuousVectorMetrics:
 
         self.vis(x_trues, x_preds)
 
-        return sim, total_loss
+        return metrics, total_loss
+
+    def MeanWasserstein(self, true, pred):
+        """Calculate FID score based on accumulated extracted features from the two distributions."""
+        # mean_real = (self.real_features_sum / self.real_features_num_samples).unsqueeze(0)
+        # mean_fake = (self.fake_features_sum / self.fake_features_num_samples).unsqueeze(0)
+
+        mean_real = torch.mean(true, dim = 0)
+        mean_pred = torch.mean(pred, dim=0)
+
+        cov_real = torch.cov(true)
+        cov_pred = torch.cov(pred)
+
+        # print(cov_pred, cov_real)
+
+        return self.ComputeWasserstein(mean_real, cov_real, mean_pred, cov_pred)
+
+    def ComputeWasserstein(self, mu1: Tensor, sigma1: Tensor, mu2: Tensor, sigma2: Tensor, eps: float = 1e-6) -> Tensor:
+        r"""Adjusted version of `Fid Score`_
+
+        The Frechet Inception Distance between two multivariate Gaussians X_x ~ N(mu_1, sigm_1)
+        and X_y ~ N(mu_2, sigm_2) is d^2 = ||mu_1 - mu_2||^2 + Tr(sigm_1 + sigm_2 - 2*sqrt(sigm_1*sigm_2)).
+
+        Args:
+            mu1: mean of activations calculated on predicted (x) samples
+            sigma1: covariance matrix over activations calculated on predicted (x) samples
+            mu2: mean of activations calculated on target (y) samples
+            sigma2: covariance matrix over activations calculated on target (y) samples
+            eps: offset constant - used if sigma_1 @ sigma_2 matrix is singular
+
+        Returns:
+            Scalar value of the distance between sets.
+        """
+        diff = mu1 - mu2
+
+        covmean = sqrtm(sigma1.mm(sigma2))
+        # Product might be almost singular
+        if not torch.isfinite(covmean).all():
+            # rank_zero_info(
+            #     f"FID calculation produces singular product; adding {eps} to diagonal of covariance estimates")
+            offset = torch.eye(sigma1.size(0), device=mu1.device, dtype=mu1.dtype) * eps
+            covmean = sqrtm((sigma1 + offset).mm(sigma2 + offset))
+
+        tr_covmean = torch.trace(covmean)
+        return diff.dot(diff) + torch.trace(sigma1) + torch.trace(sigma2) - 2 * tr_covmean
+
+        #
+        # cov_real_num = self.real_features_cov_sum - self.real_features_num_samples * mean_real.t().mm(mean_real)
+        # cov_real = cov_real_num / (self.real_features_num_samples - 1)
+        # cov_fake_num = self.fake_features_cov_sum - self.fake_features_num_samples * mean_fake.t().mm(mean_fake)
+        # cov_fake = cov_fake_num / (self.fake_features_num_samples - 1)
+        # return _compute_fid(mean_real.squeeze(0), cov_real, mean_fake.squeeze(0), cov_fake).to(self.orig_dtype)
 
 
 

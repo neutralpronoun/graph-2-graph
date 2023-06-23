@@ -5,6 +5,7 @@ name: reddit
 output_dir: outputs
 
 
+feature_type: continuous
 n_samples : 1024
 max_size  : 48
 val_prop: 0.025
@@ -25,4 +26,5 @@ max_beta_sampling: -2
 diffusion_steps: 2000
 diffusion_steps_sampling: 1000
 distribution_weighting: 1.
+add_noise_in_sampling: True
 

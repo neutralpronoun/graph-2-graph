@@ -1,3 +1,4 @@
+import json
 import os
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -10,9 +11,10 @@ import imageio
 import wandb
 import osmnx as ox
 from littleballoffur.exploration_sampling import MetropolisHastingsRandomWalkSampler
+from sklearn.preprocessing import OneHotEncoder
 # from ToyDatasets import *
 import pickle
-
+import zipfile
 import wget
 
 
@@ -77,6 +79,154 @@ def vis_big_graph(G, largest_cc=False, label=""):
 
     plt.tight_layout(h_pad=0, w_pad=0, pad=0)
     plt.savefig(f"{label}.png", dpi=600)
+
+def download_facebook(visualise = False):
+    zip_url = "https://snap.stanford.edu/data/facebook_large.zip"
+    # embedding_url = "http://snap.stanford.edu/data/web-redditEmbeddings-subreddits.csv"
+
+    start_dir = os.getcwd()
+    for _ in range(3):
+        os.chdir('../')
+    print(os.getcwd(), os.listdir())
+    os.chdir("data")
+
+    if "facebook-graph.npz" in os.listdir():
+        with open("facebook-graph.npz", "rb") as f:
+            graph = pickle.load(f)
+        os.chdir('../')
+        return graph
+
+
+
+
+    if "facebook_large" not in os.listdir():
+        _ = wget.download(zip_url)
+        with zipfile.ZipFile("facebook_large.zip", 'r') as zip_ref:
+            zip_ref.extractall(".")
+        os.remove("facebook_large.zip")
+    # if "web-redditEmbeddings-subreddits.csv" not in os.listdir():
+    #     embedding_data = wget.download(embedding_url)
+
+
+
+    os.chdir("facebook_large")
+
+    edgelist = pd.read_csv("musae_facebook_edges.csv")
+    # graph = # nx.from_pandas_edgelist(df=edgelist, source="id_1", target="id_2")
+
+    with open("musae_facebook_features.json", "r") as f:
+        embeddings = json.load(f)
+
+    all_tokens = set()
+
+    for key in embeddings.keys():
+        all_tokens = all_tokens | set(embeddings[key])
+    all_tokens = np.array(list(all_tokens)).reshape(-1,1)
+
+    # all_tokens = np.array([all_tokens | set(embeddings[key]) for key in embeddings.keys()][0]).reshape(-1,1)
+    print(all_tokens)
+    max_token = np.max(all_tokens)
+
+    # encoder = OneHotEncoder()
+    # encoder.fit(all_tokens)
+
+    # embedding_df = pd.DataFrame(columns=[i for i in range(max_token)])
+
+    one_hot_embeddings = {}
+
+    for node in embeddings:
+        one_hot = np.zeros(max_token + 1)
+        one_hot[np.array(embeddings[node])] = 1.
+        one_hot_embeddings[node] = one_hot# encoder.transform(np.array(embeddings[node]).reshape(-1,1))
+        # print(embedding_df.head())
+    # print(embedding_df.head())
+    # print(one_hot_embeddings)
+    # quit()
+
+
+
+
+
+    # features =
+
+    # embedding_column_names = ["COMPONENT", *[i for i in range(max_token)]]
+    # embeddings = pd.DataFrame(one_hot_embeddings)
+    # print(embeddings.head())
+    # quit()
+    #pd.read_csv("web-redditEmbeddings-subreddits.csv", names=embedding_column_names).transpose()
+    # graph_data = pd.read_csv("soc-redditHyperlinks-title.tsv", sep = "\t")
+
+
+    # graph = nx.from_pandas_edgelist(graph_data, source="SOURCE_SUBREDDIT", target="TARGET_SUBREDDIT")
+    # print(graph)
+
+    # CGs = [graph.subgraph(c) for c in nx.connected_components(graph)]
+    # CGs = sorted(CGs, key=lambda x: x.number_of_nodes(), reverse=True)
+    # graph = CGs[0]
+
+    # vis_big_graph(graph, label = "Reddit")
+
+
+
+    # embeddings.columns = embeddings.iloc[0]
+    # embeddings = embeddings.drop(["COMPONENT"], axis = 0)
+
+
+    graph = nx.Graph()
+
+    for col in one_hot_embeddings.keys():
+        graph.add_node(int(col), attrs=one_hot_embeddings[col].astype(float))
+    print(edgelist)
+    sources = edgelist["id_1"].to_numpy()
+    targets = edgelist["id_2"].to_numpy()
+
+    print(list(graph.nodes()))
+
+    print(sources, targets)
+
+    for i in range(sources.shape[0]):
+        graph.add_edge(sources[i], targets[i])
+
+    for node in list(graph.nodes(data=True)):
+        data = node[1]
+        if len(data) == 0:
+            graph.remove_node(node[0])
+
+    # for node in list(graph.nodes(data = True)):
+    #     print(node)
+
+    # embedding_subreddits = set(embeddings.columns)
+    # node_names = set(graph.nodes())
+    #
+    # print(embedding_subreddits - node_names)
+    # print(node_names - embedding_subreddits)
+    #
+    #
+    # for node in graph.nodes():
+    #     graph[node]["attrs"] = embeddings[node]
+    #
+    # for node in graph.nodes(data=True):
+    #     print(node)
+
+
+    graph = nx.convert_node_labels_to_integers(graph)
+
+    CGs = [graph.subgraph(c) for c in nx.connected_components(graph)]
+    CGs = sorted(CGs, key=lambda x: x.number_of_nodes(), reverse=True)
+    graph = CGs[0]
+    graph = nx.convert_node_labels_to_integers(graph)
+    graph.remove_edges_from(nx.selfloop_edges(graph))
+
+    if visualise:
+        vis_big_graph(graph, label="Reddit")
+
+    with open("reddit-graph.npz", "wb") as f:
+        pickle.dump(graph, f)
+
+    os.chdir(start_dir)
+    print(graph)
+    quit()
+    return graph
 
 def download_reddit(visualise = False):
     graph_url = "https://snap.stanford.edu/data/soc-redditHyperlinks-title.tsv"

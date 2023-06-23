@@ -24,158 +24,12 @@ from gat import GAT, EdgeCNN
 from ToyDatasets import *
 from Metrics import *
 from Datasets import *
+from Diffusion import *
 # os.chdir("graph-2-graph")
 
 import sys,os
 sys.path.append(os.getcwd())
 
-
-
-def batch_diagonal(X):
-    """
-    Extracts the diagonal from the last two dims of a tensor
-    :param X:
-    :return:
-    """
-    return torch.diagonal(X, dim1=-2, dim2=-1)
-
-def batch_trace(X):
-    """
-    Expect a matrix of shape B N N, returns the trace in shape B
-    :param X:
-    :return:
-    """
-    diag = torch.diagonal(X, dim1=-2, dim2=-1)
-    trace = diag.sum(dim=-1)
-    return trace
-
-class KNodeCycles:
-    """ Builds cycle counts for each node in a graph.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def calculate_kpowers(self):
-        self.k1_matrix = self.adj_matrix.float()
-        self.d = self.adj_matrix.sum(dim=-1)
-        self.k2_matrix = self.k1_matrix @ self.adj_matrix.float()
-        self.k3_matrix = self.k2_matrix @ self.adj_matrix.float()
-        self.k4_matrix = self.k3_matrix @ self.adj_matrix.float()
-        self.k5_matrix = self.k4_matrix @ self.adj_matrix.float()
-        self.k6_matrix = self.k5_matrix @ self.adj_matrix.float()
-
-
-    def k2_cycle(self):
-        c2 = batch_diagonal(self.k2_matrix)
-
-        return c2.unsqueeze(-1).float(), (torch.sum(c2, dim=-1)/4).unsqueeze(-1).float()
-
-    def k3_cycle(self):
-        """ tr(A ** 3). """
-        c3 = batch_diagonal(self.k3_matrix)
-        #
-        # print(f"C3: {c3}\n"
-        #       f"C3 unsqueezed: {(c3 / 2).unsqueeze(-1).float()}\n"
-        #       f"second term: {(torch.sum(c3, dim=-1) / 6).unsqueeze(-1).float()}")
-
-        return (c3 / 2).unsqueeze(-1).float(), (torch.sum(c3, dim=-1) / 6).unsqueeze(-1).float()
-
-    def k4_cycle(self):
-        diag_a4 = batch_diagonal(self.k4_matrix)
-        c4 = diag_a4 - self.d * (self.d - 1) - (self.adj_matrix @ self.d.unsqueeze(-1)).sum(dim=-1)
-        return (c4 / 2).unsqueeze(-1).float(), (torch.sum(c4, dim=-1) / 8).unsqueeze(-1).float()
-
-    def k5_cycle(self):
-        diag_a5 = batch_diagonal(self.k5_matrix)
-        triangles = batch_diagonal(self.k3_matrix)
-
-        c5 = diag_a5 - 2 * triangles * self.d - (self.adj_matrix @ triangles.unsqueeze(-1)).sum(dim=-1) + triangles
-        return (c5 / 2).unsqueeze(-1).float(), (c5.sum(dim=-1) / 10).unsqueeze(-1).float()
-
-    def k6_cycle(self):
-        term_1_t = batch_trace(self.k6_matrix)
-        term_2_t = batch_trace(self.k3_matrix ** 2)
-        term3_t = torch.sum(self.adj_matrix * self.k2_matrix.pow(2), dim=[-2, -1])
-        d_t4 = batch_diagonal(self.k2_matrix)
-        a_4_t = batch_diagonal(self.k4_matrix)
-        term_4_t = (d_t4 * a_4_t).sum(dim=-1)
-        term_5_t = batch_trace(self.k4_matrix)
-        term_6_t = batch_trace(self.k3_matrix)
-        term_7_t = batch_diagonal(self.k2_matrix).pow(3).sum(-1)
-        term8_t = torch.sum(self.k3_matrix, dim=[-2, -1])
-        term9_t = batch_diagonal(self.k2_matrix).pow(2).sum(-1)
-        term10_t = batch_trace(self.k2_matrix)
-
-        c6_t = (term_1_t - 3 * term_2_t + 9 * term3_t - 6 * term_4_t + 6 * term_5_t - 4 * term_6_t + 4 * term_7_t +
-                3 * term8_t - 12 * term9_t + 4 * term10_t)
-        return None, (c6_t / 12).unsqueeze(-1).float()
-
-    def k_cycles(self, adj_matrix, verbose=False):
-        # TODO: removed asserts as for the bike dataset was throwing errors. Fix later!
-        self.adj_matrix = adj_matrix
-        self.calculate_kpowers()
-
-        k2x, k2y = self.k2_cycle()
-        # assert (k2x >= -0.1).all(), k2x[k2x <= -0.1]
-
-        k3x, k3y = self.k3_cycle()
-        # assert (k3x >= -0.1).all(), k3x[k3x <= -0.1]
-
-        k4x, k4y = self.k4_cycle()
-        # assert (k4x >= -0.1).all(), k4x[k4x <= -0.1]
-
-        k5x, k5y = self.k5_cycle()
-        # assert (k5x >= -0.1).all(), k5x[k5x <= -0.1]
-
-        _, k6y = self.k6_cycle()
-        # assert (k6y >= -0.1).all()
-
-        kcyclesx = torch.cat([k2x, k3x, k4x, k5x], dim=-1)
-        kcyclesy = torch.cat([k2y, k3y, k4y, k5y, k6y], dim=-1)
-        return kcyclesx, kcyclesy
-
-class SimpleNodeCycleFeatures:
-    def __init__(self):
-        self.kcycles = KNodeCycles()
-
-    def __call__(self, adj_matrix):
-
-        # adj_matrix = noisy_data['E_t'][..., 1:].sum(dim=-1).float()
-
-        x_cycles, y_cycles = self.kcycles.k_cycles(adj_matrix=adj_matrix)   # (bs, n_cycles)
-        # x_cycles = x_cycles.type_as(adj_matrix) * noisy_data['node_mask'].unsqueeze(-1)
-        # Avoid large values when the graph is dense
-        x_cycles = x_cycles / 10
-        y_cycles = y_cycles / 10
-        x_cycles[x_cycles > 1] = 1
-        y_cycles[y_cycles > 1] = 1
-        return x_cycles, y_cycles
-
-def setup_wandb(cfg):
-    # print(OmegaConf.to_yaml(cfg))
-    data_name = cfg["name"]
-    kwargs = {'name': f"{data_name}-" + datetime.datetime.now().strftime("%m-%d-%Y-%H-%M-%S"), 'project': f'Graph-2-Graph',
-              'settings': wandb.Settings(_disable_stats=False), 'reinit': True, 'entity':'hierarchical-diffusion'}
-    wandb.init(**kwargs)
-    wandb.config.update(cfg)
-    wandb.save('*.txt')
-
-    # wandb.log({"Type":"Training"})
-    # wandb.log(cfg)
-
-# class EMA():
-#     def __init__(self, beta=0.9999):
-#         super().__init__()
-#         self.beta = beta
-#     def update_model_average(self, ma_model, current_model):
-#         for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
-#             old_weight, up_weight = ma_params.data, current_params.data
-#             ma_params.data = self.update_average(old_weight, up_weight)
-#     def update_average(self, old, new):
-#         if old is None:
-#             return new
-#         return old * self.beta + (1 - self.beta) * new
 
 class DiffusionUNet(torch.nn.Module):
     def __init__(self, nx_graph_list, cfg):
@@ -203,6 +57,10 @@ class DiffusionUNet(torch.nn.Module):
 
         self.val_fn = None
         self.dist_weighting = cfg["distribution_weighting"]
+        self.add_noise = bool(cfg["add_noise_in_sampling"])
+
+        if cfg["feature_type"] == "continuous":
+            self.diff_handler = ContinuousDiffusionFunctions()
 
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -219,10 +77,7 @@ class DiffusionUNet(torch.nn.Module):
 
             elif nx_graph_list == "qm9":
                 datadir = os.getcwd() + "/data/"
-                dataset = QM9(root = datadir)#PygNodePropPredDataset(name = "ogbn-proteins")
-                # print(dataset)
-                # split_idx = dataset.get_idx_split()
-                # print(split_idx)
+                dataset = QM9(root = datadir)
 
                 print(len(dataset))
 
@@ -311,18 +166,12 @@ class DiffusionUNet(torch.nn.Module):
         else:
             self.vis_fn = colormap_vis
 
-        # date_time = str(datetime.datetime.now())
-        # print(str(date_time), os.getcwd())
-        # date_time = date_time.replace(' ', '_')
-        # date_time = date_time.replace(r':', r'_')
-        # self.output_dir = output_dir + f"/{date_time}"
-        # os.mkdir(self.output_dir)
-        # os.chdir(self.output_dir)
 
         # self.sigmas = self.noise_schedule(diffusion_steps, schedule_type)
-        self.prepare_noise_schedule(diffusion_steps = diffusion_steps, min_beta=min_beta, max_beta=max_beta)
-        self.prepare_noise_schedule(diffusion_steps=diffusion_steps_sampling, min_beta=min_beta_sampling, max_beta=max_beta_sampling, sampling=True)
-        self.get_feature_normalisers()
+        self.alphas, self.alpha_bars, self.betas = self.diff_handler.prepare_noise_schedule(diffusion_steps = diffusion_steps, min_beta=min_beta, max_beta=max_beta)
+        self.alphas_sampling, self.alpha_bars_sampling, self.betas_sampling = self.diff_handler.prepare_noise_schedule(diffusion_steps=diffusion_steps_sampling, min_beta=min_beta_sampling, max_beta=max_beta_sampling, sampling=True)
+        self.feature_means, self.feature_vars = self.diff_handler.get_feature_normalisers(self.x_dim, self.train_loader)
+
         if type(nx_graph_list) is str:
             try:
                 self.train_loader = self.train_loader.to_datapipe().batch_graphs(batch_size=batch_size)
@@ -330,182 +179,33 @@ class DiffusionUNet(torch.nn.Module):
             except:
                 pass
 
-        # quit()
-        # print(f"Noise schedule: {self.sigmas}")
-
-
-
-    def get_feature_normalisers(self):
-        # self.x_dim = self.train_loader[0].x.shape[1]
-        feature_sums = torch.zeros(self.x_dim, dtype=torch.double)
-        print(f"Found feature dimensions to be {self.x_dim}")
-
-        counter = 0
-        for graph in self.train_loader:
-
-            x = graph.x
-            counter += x.shape[0]
-            local_sums = torch.sum(x, dim=0)
-            feature_sums += local_sums
-
-        self.feature_means = (feature_sums / counter).double().to(self.device)
-
-
-
-        x0 = None # self.train_loader[0].x
-        for graph in tqdm(self.train_loader, leave = False):
-            if x0 is None:
-                x0 = graph.x
-            else:
-                x = graph.x
-                x0 = torch.cat((x0, x))
-
-        # print(torch.var(x0, dim = 0), torch.max(x0, dim = 0)[0])
-
-        self.feature_vars = torch.mean(x0, dim = 0).to(self.device)
-
-
-        if torch.sum(torch.abs(self.feature_vars)) < 1e-3:
-            self.feature_vars = self.feature_vars / self.feature_vars
-
-        if torch.sum(torch.abs(self.feature_means)) < 1e-3:
-            self.feature_means = self.feature_means / self.feature_means
-
-        print(f"Found feature means with dim: {self.feature_means.shape}")
-        print(f"Found feature variances with dim: {self.feature_vars.shape}")
-
-
-
-
-
-    def prepare_noise_schedule(self, diffusion_steps = 400, min_beta = 10 ** -4, max_beta = 0.02, schedule_type = "cosine", sampling = False):
-        # if schedule_type == "cosine":
-        #     ts = np.linspace(start = 0, stop = np.pi / 2, num = diffusion_steps)
-        #     fn = np.sin(ts)
-
-        if not sampling:
-            self.betas = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
-            self.alphas = 1 - self.betas
-            self.alpha_bars = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
-        else:
-            self.betas_sampling = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
-            self.alphas_sampling = 1 - self.betas
-            self.alpha_bars_sampling = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
-
-
-        fig = plt.figure(figsize = (8,4))
-
-        plt.plot(list(range(self.diffusion_steps)), self.betas.detach().cpu(), label = "betas")
-        plt.plot(list(range(self.diffusion_steps)), self.alphas.detach().cpu(), label = "alphas")
-        plt.plot(list(range(self.diffusion_steps)), self.alpha_bars.detach().cpu(), label = "abar")
-
-        plt.legend(shadow=True)
-        plt.savefig("Noise_Schedule.png")
-        plt.close()
-        # print(self.alpha_bars)
-
-        # return fn
-
-
-
-    def apply_noise(self, x, t, eta = None):
-        # Applies noise to a pyg Batch object
-
-        # x_shape = x.shape
-        # noise = ((torch.randn(size=x_shape)) * (noise_variance ** 0.5)).to(self.device)
-        #
-        # return noise + x
-
-        x_shape = x.shape
-        a_bar = self.alpha_bars[t]
-
-        if eta is None:
-            eta = torch.randn(x_shape).to(self.device)
-
-        noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
-
-        return noisy
-
-
-    def train_batch(self, batch, t):
-
-        x0 = batch.x.float().to(self.device) # self.apply_noise(batch.x.float().to(self.device), t - 1)
-        eta = torch.randn_like(x0).to(self.device)
-        t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
-
-
-
-        noisy_feat = self.apply_noise(x0, t, eta = eta)
-
-
-        # print(t_appended.shape, noisy_feat.shape)
-        noisy_feat = torch.cat((t_appended, noisy_feat), dim = 1)
-
-        # print(t)
-        # fig, (ax1, ax2) =  plt.subplots(ncols=2)
-        # ax1.imshow(x0.detach().cpu(), vmin = -1, vmax = 1)
-        # ax2.imshow(noisy_feat.detach().cpu()[:, 1:], vmin = -1, vmax = 1)
-        # plt.show()
-
-        # inp    = self.apply_noise(batch.x.float().to(self.device), t)
-        out = self.model(noisy_feat, batch.edge_index.to(self.device))
-        loss = self.loss_fn(out, eta)
-
-
-
-        return loss
-
     def train(self, n_epochs, val_every = 25, gif_first = False):
         self.model.train()
 
         pbar = tqdm(range(n_epochs))
 
         losses = []
-        # val_losses, val_epochs = [], []
         for epoch_number, epoch in enumerate(pbar):
 
             epoch_loss = 0.0
             pbar_batch = tqdm(self.train_loader, leave=False, colour="#005500")
 
             for ib, batch in enumerate(pbar_batch):
-
                 t = np.random.randint(self.diffusion_steps)
-
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-
                 x0 = ((x0 - self.feature_means) / self.feature_vars).float()
-
                 eta = torch.randn_like(x0).to(self.device)
-                # t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
-                # x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
 
-                noisy_feat = self.apply_noise(x0, t, eta=eta)
-
-                # print(t_appended.shape, x_cycles.shape, noisy_feat.shape)
-                # print(t_appended.shape, x_cycles.shape, noisy_feat.shape)
-
-
-
-                # print(noisy_feat.shape)
-                # try:
+                noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
                 noisy_feat = torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
                                         self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                         noisy_feat), dim=1)
                 out = self.model(noisy_feat, batch.edge_index.to(self.device))
-                # except:
-                #     print(f"t: {t_appended.shape}"
-                #           f"cycles: {x_cycles.shape}"
-                #           f"x: {noisy_feat.shape}"
-                #           f"batch: {batch.x.shape}")
                 loss = self.loss_fn(out, eta)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-
-                # if self.ema_scheduler is not None:
-                #     if epoch_number > self.ema_scheduler['ema_start'] and epoch_number % self.ema_scheduler['ema_iter'] == 0:
-                #         self.EMA.update_model_average(self.netG_EMA, self.model)
 
                 epoch_loss += loss.item() / batch.num_graphs
                 wandb.log({f"Train/Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
@@ -516,24 +216,10 @@ class DiffusionUNet(torch.nn.Module):
             if epoch_number  % val_every == 0 or epoch_number == n_epochs - 1:
                 val_loss = self.validation_epoch(gif_first = gif_first,
                                                  epoch_number = epoch_number)
-                # val_epochs.append(epoch_number)
-                # val_losses.append(val_loss)
 
             pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
-            # else:
-            #     pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]}")
-
-                # if ib > 50:
-                #     break
             losses.append(epoch_loss)
 
-
-
-        # plt.plot(losses, label = "Train Losses")
-        # plt.plot(val_epochs, val_losses, label = "Validation Losses (between x)")
-        # plt.yscale('log')
-        # plt.legend(shadow=True)
-        # plt.savefig("Losses.png")
 
     def validation_epoch(self, gif_first = False, epoch_number = 0):
         if "val_vis" not in os.listdir():
@@ -552,20 +238,12 @@ class DiffusionUNet(torch.nn.Module):
                 else:
                     val_batch_loss, x_pred = self.sample_features(val_batch)
 
-                # print(x_pred.shape)
-
-                # if self.val_fn is not None:
-                #     val_metric = self.val_fn(val_batch, x_pred).item()
-                #     mean_val_metric += val_metric / val_batch.num_graphs
-                #     # wandb.log({"Validation/Similarity": val_metric})
-
                 val_loss += val_batch_loss.item() / val_batch.num_graphs
 
-        wandb.log({"Similarity": val_metric})
+        # wandb.log({"Similarity": val_metric})
+        wandb.log(val_metric)
         wandb.log({f"Val-{self.loss_fn}": val_loss})
 
-        # wandb.log({"Validation/Similarity": val_metric})
-        # wandb.log({f"Validation/Val-{self.loss_fn}": val_loss})
         self.model.train()
 
         return val_loss
@@ -586,101 +264,30 @@ class DiffusionUNet(torch.nn.Module):
         if gif_first:
             frames = []
         for t in sampling_pbar:
-            # t_appended = torch.full((batch.x.shape[0], 1), t).to(self.device)
-            # x_cycles = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
-            # print(torch.full((batch.x.shape[0], 1), t).shape,
-            #       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze().shape,
-            #       x.shape)
-            # try:
-            # x_passed = torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-            #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-            #                       x), dim = 1)
-            # except:
-            #     print(f"t: {t_appended.shape}"
-            #           f"cycles: {x_cycles.shape}"
-            #           f"x: {x.shape}"
-            #           f"batch: {batch.x.shape}")
-            # print(x_passed)
             eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
                                   self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                   x), dim = 1),
                                  edge_index)
 
-
-            # del x_passed
-            alpha_t = self.alphas_sampling[t]
-            alpha_t_bar = self.alpha_bars_sampling[t]
-            # print(alpha_t, alpha_t_bar)
-            # noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
-
-            x = (1 / alpha_t.sqrt()) * (x - (1 - alpha_t) / (1 - alpha_t_bar).sqrt() * eta_out)
-
-            # print(x, x_passed)
-
-            # if t > 0:  #self.diffusion_steps:
-            #     z = torch.randn(batch.x.shape).to(self.device)
-            #
-            #     beta_t = self.betas_sampling[t]
-            #     sigma_t = beta_t.sqrt()
-            #     # print(sigma_t)
-            #     x = x + sigma_t * z
-            #
-            #     del z
-
+            x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
 
             if visualise:
 
                 noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
 
                 sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-                # if gif_first and t % every_frame == 0:
-                #     frames.append(((x * self.feature_vars) + self.feature_means).detach().float().cpu().numpy())
-            # print(x, eta_out, alpha_t, alpha_t_bar)
-            # if t % 50 == 0:
-            #     print(torch.sum(x), torch.sum(batch.x.detach().cpu()))
-            # x = self.model(x, edge_index)
 
-        # x = ((x + 0.5) * self.feature_vars).float()
         x = (x * self.feature_vars) + self.feature_means
 
-
-
-        # if visualise is not None:
-        #     if gif_first:
-        #         self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first = frames)
-        #     else:
-        #         self.vis_fn(batch, x, sums, noise_amounts, visualise, gif_first=False)
-
-        # wandb.log({"Noise_Amounts":np.array(noise_amounts), "Mean_X":np.array(sums)})
-        # print(x.shape)
-        # quit()
         node_loss = self.loss_fn(x, batch.x.to(self.device))
         distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to(self.device), dim=0))
         loss = node_loss + self.dist_weighting * distribution_loss
 
         wandb.log({f"Node-{self.loss_fn}":node_loss,
                    f"Component-Mean-{self.loss_fn}": distribution_loss})
-        # batch.x = batch.x.to("cpu")
-        # x = x.to("cpu")
-
-
 
         return loss, x
 
-
-
-def colormap_vis(batch, x, sums, noise_amounts, label, gif_first = False):
-    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-
-    ax1.imshow(batch.x.detach().cpu())  # , vmin = 0, vmax = 1)
-    ax2.imshow(x.detach().cpu())  # , vmin = 0, vmax = 1)
-    ax3.plot(sums, label="x")
-    ax3.plot(noise_amounts, label="eta")
-    ax3.legend(shadow=True)
-
-    plt.savefig(f"{label}.png")
-    plt.close()
-    # plt.show()
 
 @hydra.main(version_base='1.1', config_path='configs', config_name="main")
 def main(cfg : DictConfig) -> None:
@@ -727,6 +334,11 @@ def main(cfg : DictConfig) -> None:
 
     elif cfg["name"] == "reddit":
         reddit_graph = download_reddit()
+        setup_wandb(cfg)
+        graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
+
+    elif cfg["name"] == "facebook":
+        reddit_graph = download_facebook()
         setup_wandb(cfg)
         graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
 
