@@ -176,13 +176,13 @@ def download_facebook(visualise = False):
 
     for col in one_hot_embeddings.keys():
         graph.add_node(int(col), attrs=one_hot_embeddings[col].astype(float))
-    print(edgelist)
+    # print(edgelist)
     sources = edgelist["id_1"].to_numpy()
     targets = edgelist["id_2"].to_numpy()
 
-    print(list(graph.nodes()))
-
-    print(sources, targets)
+    # print(list(graph.nodes()))
+    #
+    # print(sources, targets)
 
     for i in range(sources.shape[0]):
         graph.add_edge(sources[i], targets[i])
@@ -225,7 +225,7 @@ def download_facebook(visualise = False):
 
     os.chdir(start_dir)
     print(graph)
-    quit()
+    # quit()
     return graph
 
 def download_reddit(visualise = False):

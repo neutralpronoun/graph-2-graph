@@ -60,7 +60,14 @@ class DiffusionUNet(torch.nn.Module):
         self.add_noise = bool(cfg["add_noise_in_sampling"])
 
         if cfg["feature_type"] == "continuous":
+            self.feat_type = "cont"
             self.diff_handler = ContinuousDiffusionFunctions()
+            self.loss_fn = torch.nn.MSELoss(reduction="mean")
+        elif cfg["feature_type"] == "discrete":
+            self.feat_type = "disc"
+            self.diff_handler = DiscreteDiffusionFunctions()
+            self.loss_fn = torch.nn.MSELoss(reduction="mean")
+            # self.loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
 
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -149,7 +156,7 @@ class DiffusionUNet(torch.nn.Module):
         #                  hidden_channels=hidden_dim,
         #                  num_layers = num_layers).to(self.device)
 
-        self.loss_fn = torch.nn.MSELoss(reduction="mean")
+        # self.loss_fn = torch.nn.MSELoss(reduction="mean")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=0.0001)
 
@@ -170,7 +177,11 @@ class DiffusionUNet(torch.nn.Module):
         # self.sigmas = self.noise_schedule(diffusion_steps, schedule_type)
         self.alphas, self.alpha_bars, self.betas = self.diff_handler.prepare_noise_schedule(diffusion_steps = diffusion_steps, min_beta=min_beta, max_beta=max_beta)
         self.alphas_sampling, self.alpha_bars_sampling, self.betas_sampling = self.diff_handler.prepare_noise_schedule(diffusion_steps=diffusion_steps_sampling, min_beta=min_beta_sampling, max_beta=max_beta_sampling, sampling=True)
-        self.feature_means, self.feature_vars = self.diff_handler.get_feature_normalisers(self.x_dim, self.train_loader)
+
+        if cfg["feature_type"] == "continuous":
+            self.feature_means, self.feature_vars = self.diff_handler.get_feature_normalisers(self.x_dim, self.train_loader)
+        elif cfg["feature_type"] == "discrete":
+            self.feature_marginals = self.diff_handler.get_feature_marginals(self.x_dim, self.train_loader)
 
         if type(nx_graph_list) is str:
             try:
@@ -193,7 +204,9 @@ class DiffusionUNet(torch.nn.Module):
             for ib, batch in enumerate(pbar_batch):
                 t = np.random.randint(self.diffusion_steps)
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-                x0 = ((x0 - self.feature_means) / self.feature_vars).float()
+
+                if self.feat_type == "cont":
+                    x0 = ((x0 - self.feature_means) / self.feature_vars).float()
                 eta = torch.randn_like(x0).to(self.device)
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
@@ -201,7 +214,11 @@ class DiffusionUNet(torch.nn.Module):
                                         self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                         noisy_feat), dim=1)
                 out = self.model(noisy_feat, batch.edge_index.to(self.device))
-                loss = self.loss_fn(out, eta)
+
+                if self.feat_type == "cont":
+                    loss = self.loss_fn(out, eta)
+                else:
+                    loss = self.loss_fn(out, x0)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -269,18 +286,29 @@ class DiffusionUNet(torch.nn.Module):
                                   x), dim = 1),
                                  edge_index)
 
-            x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
+            if self.feat_type == "cont":
+                x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
+            if self.feat_type == "disc":
+                x = self.diff_handler.remove_noise_step(x, t, add_noise = self.add_noise) # Don't need eta for this
 
             if visualise:
+                if self.feat_type == "cont":
+                    noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
 
-                noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
+                    sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
+                else:
+                    noise_amounts.append(torch.mean(eta_out).detach().cpu())
 
-                sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
+                    sums.append(torch.mean(x).detach().cpu())
 
-        x = (x * self.feature_vars) + self.feature_means
+        if self.feat_type == "cont":
+            x = (x * self.feature_vars) + self.feature_means
 
         node_loss = self.loss_fn(x, batch.x.to(self.device))
-        distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to(self.device), dim=0))
+        if self.feat_type == "cont":
+            distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to(self.device), dim=0))
+        elif self.feat_type == "disc":
+            distribution_loss = self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
         loss = node_loss + self.dist_weighting * distribution_loss
 
         wandb.log({f"Node-{self.loss_fn}":node_loss,

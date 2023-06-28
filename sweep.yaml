@@ -1,7 +1,7 @@
 method: bayes
 metric:
   goal: minimize
-  name: Val-MSELoss()
+  name: Wasserstein
 early_terminate:
   type: hyperband
   min_iter: 3

@@ -151,12 +151,14 @@ class ContinuousVectorMetrics:
         """Calculate FID score based on accumulated extracted features from the two distributions."""
         # mean_real = (self.real_features_sum / self.real_features_num_samples).unsqueeze(0)
         # mean_fake = (self.fake_features_sum / self.fake_features_num_samples).unsqueeze(0)
-
+        # print("\n", true.isinf().any(), pred.isinf().any(), true.isnan().any(), pred.isnan().any())
+        pred = pred.to(true.dtype)
+        # print(true.isinf().any(), pred.isinf().any(), true.isnan().any(), pred.isnan().any(), "\n")
         mean_real = torch.mean(true, dim = 0)
-        mean_pred = torch.mean(pred, dim=0)
+        mean_pred = torch.mean(pred, dim=0).to(mean_real.dtype)
 
         cov_real = torch.cov(true)
-        cov_pred = torch.cov(pred)
+        cov_pred = torch.cov(pred).to(mean_real.dtype)
 
         # print(cov_pred, cov_real)
 
@@ -179,7 +181,9 @@ class ContinuousVectorMetrics:
             Scalar value of the distance between sets.
         """
         diff = mu1 - mu2
-
+        # print(mu1.isinf().any(), mu2.isinf().any(), mu1.isnan().any(), mu2.isnan().any())
+        # print(sigma1.isinf().any(), sigma2.isinf().any(), sigma1.isnan().any(), sigma2.isnan().any())
+        # print(sigma1.dtype, sigma2.dtype)
         covmean = sqrtm(sigma1.mm(sigma2))
         # Product might be almost singular
         if not torch.isfinite(covmean).all():

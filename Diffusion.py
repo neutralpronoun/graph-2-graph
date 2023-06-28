@@ -276,6 +276,218 @@ class ContinuousDiffusionFunctions:
 
         return x
 
+class DiscreteDiffusionFunctions:
+    def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        pass
+
+    def get_feature_marginals(self, x_dim, train_loader):
+        self.x_dim = x_dim
+        feature_sums = torch.zeros(x_dim, dtype=torch.double)
+        print(f"Found feature dimensions to be {x_dim}")
+
+        counter = 0
+        for graph in train_loader:
+            x = graph.x
+            counter += x.shape[0]
+            local_sums = torch.sum(x, dim=0)
+            feature_sums += local_sums
+
+        feature_means = (feature_sums / counter).double().to(self.device)
+
+        self.feature_marginals = feature_means.to(self.device)
+
+        print(f"Found marginals for {self.feature_marginals.shape} features, avg. {torch.mean(self.feature_marginals)}")
+
+        return self.feature_marginals
+
+
+    # def get_feature_normalisers(self, x_dim, train_loader):
+    #     # self.x_dim = self.train_loader[0].x.shape[1]
+    #     feature_sums = torch.zeros(x_dim, dtype=torch.double)
+    #     print(f"Found feature dimensions to be {x_dim}")
+    #
+    #     counter = 0
+    #     for graph in train_loader:
+    #         x = graph.x
+    #         counter += x.shape[0]
+    #         local_sums = torch.sum(x, dim=0)
+    #         feature_sums += local_sums
+    #
+    #     feature_means = (feature_sums / counter).double().to(self.device)
+    #
+    #     x0 = None  # self.train_loader[0].x
+    #     for graph in tqdm(train_loader, leave=False):
+    #         if x0 is None:
+    #             x0 = graph.x
+    #         else:
+    #             x = graph.x
+    #             x0 = torch.cat((x0, x))
+    #
+    #     # print(torch.var(x0, dim = 0), torch.max(x0, dim = 0)[0])
+    #
+    #     feature_vars = torch.mean(x0, dim=0).to(self.device)
+    #
+    #     if torch.sum(torch.abs(feature_vars)) < 1e-3:
+    #         feature_vars = feature_vars / feature_vars
+    #
+    #     if torch.sum(torch.abs(feature_means)) < 1e-3:
+    #         feature_means = feature_means / feature_means
+    #
+    #     print(f"Found feature means with dim: {feature_means.shape}")
+    #     print(f"Found feature variances with dim: {feature_vars.shape}")
+    #
+    #     self.feature_means, self.feature_vars = feature_means, feature_vars
+    #
+    #     return feature_means, feature_vars
+
+    def prepare_noise_schedule(self, diffusion_steps=400, min_beta=10 ** -4, max_beta=0.02, schedule_type="cosine",
+                               sampling=False):
+        # if schedule_type == "cosine":
+        #     ts = np.linspace(start = 0, stop = np.pi / 2, num = diffusion_steps)
+        #     fn = np.sin(ts)
+
+        if not sampling:
+            self.betas = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
+            self.alphas = 1 - self.betas
+            self.alpha_bars = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(
+                self.device)
+        else:
+            self.betas_sampling = torch.linspace(min_beta, max_beta, diffusion_steps).to(self.device)
+            self.alphas_sampling = 1 - self.betas
+            self.alpha_bars_sampling = torch.tensor(
+                [torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
+
+        return self.alphas, self.alpha_bars, self.betas
+
+        # fig = plt.figure(figsize=(8, 4))
+        #
+        # plt.plot(list(range(self.diffusion_steps)), self.betas.detach().cpu(), label="betas")
+        # plt.plot(list(range(self.diffusion_steps)), self.alphas.detach().cpu(), label="alphas")
+        # plt.plot(list(range(self.diffusion_steps)), self.alpha_bars.detach().cpu(), label="abar")
+        #
+        # plt.legend(shadow=True)
+        # plt.savefig("Noise_Schedule.png")
+        # plt.close()
+        # print(self.alpha_bars)
+
+        # return fn
+
+    def apply_noise(self, x, t, eta=None, sampling = False):
+        # Applies noise to a pyg Batch object
+
+        if sampling:
+            alpha_t = self.alpha_bars_sampling[t]
+        else:
+            alpha_t = self.alpha_bars[t]
+        # alpha_t = self.alpha_bars[t]
+        Q = alpha_t * torch.eye(self.x_dim, device=self.device) + (1 - alpha_t) * self.feature_marginals
+        Q = Q.to(x.dtype)
+
+        x[x.isinf()] = 1e6
+        #
+        # assert not torch.isinf(x).any(), f"Found infs in x (batch), {torch.sum(x.isinf())}"
+        # assert not torch.isinf(Q).any(), "Found infs in transition matrix"
+        #
+        # assert not torch.isnan(x).any(), "Found NaNs in x (batch)"
+        # assert not torch.isnan(Q).any(), "Found NaNs in transition matrix"
+
+        noisy = x @ Q
+        noisy[noisy.isinf()] = 1e6
+        # noisy = torch.squeeze(x @ Q)
+        # print(x.shape, Q.shape, noisy.shape)
+        # assert not torch.isinf(noisy).any(), f"Found infs in noisy data (probabilities), Sampling: {sampling}, {torch.sum(noisy.isinf())}"
+        # assert not torch.isnan(noisy).any(), f"Found NaNs in noisy data (probabilities), Sampling: {sampling}, {noisy.isnan()}"
+        #
+        # # Sampled yes/nos
+        # noisy = self.sample_discrete_features(noisy)
+        # assert not torch.isnan(noisy).any(), "Found NaNs in noisy data (discrete)"
+
+
+        return noisy
+    # wandb.log({"Type":"Training"})
+    # wandb.log(cfg)
+
+    def sample_discrete_features(self, probX):
+        ''' Sample features from multinomial distribution with given probabilities (probX, probE, proby)
+            :param probX: bs, n, dx_out        node features
+            :param probE: bs, n, n, de_out     edge features
+            :param proby: bs, dy_out           global features.
+        '''
+        # Noise X
+        # The masked rows should define probability distributions as well
+        # probX[~node_mask] = 1 / probX.shape[-1]
+
+        # Flatten the probability tensor to sample with multinomial
+        x_dim_in = probX.shape
+        # probX = probX.reshape(probX.size(0) * probX.size(1), -1)  # (bs * n, dx_out)
+        # assert (abs(probX.sum(dim=-1) - 1) < 1e-4).all()
+
+        # Sample X
+        X_t = probX.round()# multinomial(1)  # (bs * n, 1)
+        # print(x_dim_in, X_t, X_t.shape)
+        # X_t = X_t.reshape(x_dim_in)  # (bs, n)
+
+        # Noise E
+        # The masked rows should define probability distributions as well
+        # inverse_edge_mask = ~(node_mask.unsqueeze(1) * node_mask.unsqueeze(2))
+        # diag_mask = torch.zeros(probE.size(0), probE.size(1), probE.size(2)) + \
+        #             torch.eye(probE.size(1), probE.size(2)).unsqueeze(0)
+        #
+        # probE[inverse_edge_mask] = 1 / probE.shape[-1]
+        # probE[diag_mask.bool()] = 1 / probE.shape[-1]
+        #
+        # probE = probE.reshape(probE.size(0) * probE.size(1) * probE.size(2), -1)  # (bs * n * n, de_out)
+        #
+        # probE[probE < 0.] = 0.
+        #
+        # # print(f"ProbE: {probE}")
+        #
+        # # Sample E
+        # E_t = probE.multinomial(1).reshape(node_mask.size(0), node_mask.size(1), node_mask.size(1))  # (bs, n, n)
+        # E_t = torch.triu(E_t, diagonal=1)
+        # E_t = (E_t + torch.transpose(E_t, 1, 2))
+        #
+        # if probY is not None:
+        #     ydim1, ydim2 = probY.size(0), probY.size(1)
+        #     probY[probY < 0.] = 0.
+        #     # probY = probY.reshape(ydim1*ydim2)
+        #     Y_t = probY.multinomial(1)
+        # else:
+        #     Y_t = torch.zeros(X_t.shape[0], 0).type_as(X_t)
+
+        # return PlaceHolder(X=X_t, E=E_t, y=torch.zeros(X_t.shape[0], 0).type_as(X_t))
+        # assert not torch.isnan(X_t).any() , "Found NaNs  in X_t"
+        # assert not torch.isinf(X_t).any(), "Found infs in X_t"
+        return X_t # PlaceHolder(X=X_t, E=E_t, y=Y_t.type_as(X_t))
+
+    def remove_noise_step(self, x, t, add_noise = False):
+        # alpha_t = self.alphas_sampling[t]
+        # alpha_t_bar = self.alpha_bars_sampling[t]
+        # print(alpha_t, alpha_t_bar)
+        # noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
+
+        # x = (1 / alpha_t.sqrt()) * (x - (1 - alpha_t) / (1 - alpha_t_bar).sqrt() * eta_out)
+        x = torch.round(x)
+
+        if t > 0 and add_noise:  # self.diffusion_steps:
+            assert not torch.isnan(x).any() and not torch.isinf(x).any(), f"Found NaNs or infs in x after removing noise at step {t}"
+            x = self.apply_noise(x, t, sampling=True)
+            assert not torch.isnan(x).any() and not torch.isinf(x).any(), f"Found NaNs in x after adding sampling noise at step {t}"
+            # z = torch.randn(x.shape).to(self.device)
+            #
+            # beta_t = self.betas_sampling[t]
+            # sigma_t = beta_t.sqrt()
+            # # print(sigma_t)
+            # x = x + sigma_t * z
+            #
+            # del z
+        # elif t == 0:
+        #     x = torch.round(x)
+
+        # assert not torch.isnan(x).any() and not torch.isinf(x).any(), f"Found NaNs in x after adding sampling noise at step {t}"
+        return x
+
 # class EMA():
 #     def __init__(self, beta=0.9999):
 #         super().__init__()

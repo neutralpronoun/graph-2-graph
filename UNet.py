@@ -13,6 +13,7 @@ from torch_geometric.utils import (
 )
 from torch_geometric.utils.repeat import repeat
 
+
 class GraphUNet(torch.nn.Module):
     r"""The Graph U-Net model from the `"Graph U-Nets"
     <https://arxiv.org/abs/1905.05178>`_ paper which implements a U-Net like
@@ -39,7 +40,7 @@ class GraphUNet(torch.nn.Module):
         depth: int,
         pool_ratios: Union[float, List[float]] = 0.5,
         sum_res: bool = True,
-        act: Union[str, Callable] = 'relu',
+        act: Union[str, Callable] = 'relu'
     ):
         super().__init__()
         assert depth >= 1
@@ -49,6 +50,7 @@ class GraphUNet(torch.nn.Module):
         self.depth = depth
         self.pool_ratios = repeat(pool_ratios, depth)
         self.act = activation_resolver(act)
+
         self.sum_res = sum_res
 
         channels = hidden_channels
