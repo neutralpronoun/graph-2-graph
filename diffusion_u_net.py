@@ -25,6 +25,7 @@ from ToyDatasets import *
 from Metrics import *
 from Datasets import *
 from Diffusion import *
+from discriminator import Discriminator
 # os.chdir("graph-2-graph")
 
 import sys,os
@@ -163,15 +164,18 @@ class DiffusionUNet(torch.nn.Module):
 
         self.diffusion_steps = diffusion_steps
         self.diffusion_steps_sampling = diffusion_steps_sampling
+
+
         if vis_fn == "pca":
             self.val_class = ContinuousVectorMetrics()
             self.vis_fn = self.val_class.vis_batch
             self.val_fn = self.val_class.batch_vector_similarity
         elif vis_fn != "colormap":
             self.vis_fn = cube_val_vis
-
         else:
             self.vis_fn = colormap_vis
+
+        self.discriminator = Discriminator(self.x_dim)
 
 
         # self.sigmas = self.noise_schedule(diffusion_steps, schedule_type)
@@ -257,6 +261,21 @@ class DiffusionUNet(torch.nn.Module):
 
                 val_loss += val_batch_loss.item() / val_batch.num_graphs
 
+
+
+        x_preds = []
+        for ib_val, val_batch in enumerate(self.val_loader):
+
+            if ib_val == 0:
+                val_batch_loss, x_pred = self.sample_features(val_batch, visualise=f"val_vis/Epoch_{epoch_number}",
+                                                              gif_first=gif_first)
+            else:
+                val_batch_loss, x_pred = self.sample_features(val_batch)
+
+            x_preds.append(x_pred)
+            # val_loss += val_batch_loss.item() / val_batch.num_graphs
+
+        self.discriminator.epoch(self.val_loader, x_preds)
         # wandb.log({"Similarity": val_metric})
         wandb.log(val_metric)
         wandb.log({f"Val-{self.loss_fn}": val_loss})
