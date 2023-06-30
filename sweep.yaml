@@ -1,35 +1,48 @@
 method: bayes
 metric:
-  goal: minimize
-  name: Wasserstein
-early_terminate:
-  type: hyperband
-  min_iter: 3
+  goal: maximize
+  name: Discriminator-Loss
+#early_terminate:
+#  type: hyperband
+#  min_iter: 3
 parameters:
-  diffusion_steps:
+  n_layers:
     distribution: int_uniform
-    max: 3000
-    min: 500
-  diffusion_steps_sampling:
+    min: 3
+    max: 7
+  hidden_dim:
     distribution: int_uniform
-    max: 2000
-    min: 500
-  min_beta:
-    distribution: uniform
-    max: -4.
-    min: -8.
-  min_beta_sampling:
-    distribution: uniform
-    max: -2.
-    min: -6.
-  max_beta:
-    distribution: uniform
-    max: -1.
-    min: -3.
-  max_beta_sampling:
-    distribution: uniform
-    max: -0.5
-    min: -2.
+    min: 64
+    max: 512
+  add_noise_in_sampling:
+    distribution: categorical
+    values:
+      - True
+      - False
+#  diffusion_steps:
+#    distribution: int_uniform
+#    max: 3000
+#    min: 500
+#  diffusion_steps_sampling:
+#    distribution: int_uniform
+#    max: 2000
+#    min: 500
+#  min_beta:
+#    distribution: uniform
+#    max: -4.
+#    min: -8.
+#  min_beta_sampling:
+#    distribution: uniform
+#    max: -2.
+#    min: -6.
+#  max_beta:
+#    distribution: uniform
+#    max: -1.
+#    min: -3.
+#  max_beta_sampling:
+#    distribution: uniform
+#    max: -0.5
+#    min: -2.
 program: diffusion_u_net.py
 
 command:

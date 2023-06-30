@@ -92,6 +92,7 @@ class ContinuousVectorMetrics:
         x_preds = []
 
         total_loss = 0.
+        counter = 0
         for ib, batch in enumerate(tqdm(loader, leave=False)):
             n_graphs = batch.num_graphs
             # print(f"batch has {n_graphs} graphs")
@@ -117,6 +118,7 @@ class ContinuousVectorMetrics:
                                                    gif_first = False)
 
             total_loss += loss.item() / batch.num_graphs
+            counter += 1
 
             running_count = 0
             for indices in x_slicing_indices:
@@ -145,7 +147,7 @@ class ContinuousVectorMetrics:
 
         self.vis(x_trues, x_preds)
 
-        return metrics, total_loss
+        return metrics, total_loss / counter
 
     def MeanWasserstein(self, true, pred):
         """Calculate FID score based on accumulated extracted features from the two distributions."""

@@ -98,14 +98,24 @@ class Discriminator(torch.nn.Module):
 
 
 
-    def epoch(self, val_loader, x_generated):
+    def get_xpreds(self, val_loader, wrapper):
+        x_preds = []
+        for ib_val, val_batch in enumerate(val_loader):
+            val_batch_loss, x_pred = wrapper.sample_features(val_batch)
+            x_preds.append(x_pred)
+        return x_preds
+
+    def epoch(self, val_loader, wrapper, x_generated = None):
+        if x_generated is None:
+            x_generated = self.get_xpreds(val_loader, wrapper)
         loader = self.prepare_data(val_loader, x_generated)
         self.train(loader)
         loader = self.prepare_data(val_loader, x_generated)
-        acc = self.test(loader)
+        loss, acc = self.test(loader)
 
-        print(f"Discriminator accuracy: {acc}")
-        wandb.log({"Discriminator-Accuracy":acc})
+        print(f"Discriminator accuracy: {acc}, discriminator loss {loss}")
+        wandb.log({"Discriminator-Accuracy":acc,
+                   "Discriminator-Loss":loss})
 
 
     def prepare_data(self, val_loader, x_generated):
@@ -187,13 +197,14 @@ class Discriminator(torch.nn.Module):
             # pred = out.argmax(dim = 1)
             pred = torch.round(out).flatten()
             # print(pred, data.y)
+            loss = self.loss_fn(out.view(data.y.shape), data.y.double())
             correct += int((pred == data.y).sum())
             total += data.y.shape[0]
 
 
         # Accuracy
         # print(correct, len(loader.dataset))
-        return correct / total
+        return loss, correct / total
 
 
 

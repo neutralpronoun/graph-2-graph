@@ -51,6 +51,9 @@ class DiffusionUNet(torch.nn.Module):
         diffusion_steps = int(cfg["diffusion_steps"])
         diffusion_steps_sampling = int(cfg["diffusion_steps_sampling"])
 
+        self.val_every = int(cfg["val_every"])
+        self.vis_every = int(cfg["vis_every"])
+
         if diffusion_steps_sampling >= diffusion_steps:
             diffusion_steps_sampling = diffusion_steps - 1
 
@@ -137,7 +140,7 @@ class DiffusionUNet(torch.nn.Module):
                                  hidden_channels=hidden_dim,
                                  out_channels=self.x_dim,
                                  depth=num_layers,
-                                 pool_ratios=0.25).to(self.device)
+                                 pool_ratios=0.2).to(self.device)
 
         # self.model = EdgeCNN(in_channels = self.x_dim + 1 + self.features_dim, # +1 for timesteps, +3 for cycles
         #                  out_channels= self.x_dim,
@@ -194,7 +197,7 @@ class DiffusionUNet(torch.nn.Module):
             except:
                 pass
 
-    def train(self, n_epochs, val_every = 25, gif_first = False):
+    def train(self, n_epochs, gif_first = False):
         self.model.train()
 
         pbar = tqdm(range(n_epochs))
@@ -234,9 +237,12 @@ class DiffusionUNet(torch.nn.Module):
             wandb.log({f"Train/{self.loss_fn}":epoch_loss})
 
 
-            if epoch_number  % val_every == 0 or epoch_number == n_epochs - 1:
+            if epoch_number  % self.vis_every == 0 or epoch_number == n_epochs - 1:
                 val_loss = self.validation_epoch(gif_first = gif_first,
                                                  epoch_number = epoch_number)
+            elif epoch_number % self.val_every == 0:
+                self.discriminator.epoch(self.val_loader, self)
+
 
             pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             losses.append(epoch_loss)
@@ -261,21 +267,9 @@ class DiffusionUNet(torch.nn.Module):
 
                 val_loss += val_batch_loss.item() / val_batch.num_graphs
 
-
-
-        x_preds = []
-        for ib_val, val_batch in enumerate(self.val_loader):
-
-            if ib_val == 0:
-                val_batch_loss, x_pred = self.sample_features(val_batch, visualise=f"val_vis/Epoch_{epoch_number}",
-                                                              gif_first=gif_first)
-            else:
-                val_batch_loss, x_pred = self.sample_features(val_batch)
-
-            x_preds.append(x_pred)
             # val_loss += val_batch_loss.item() / val_batch.num_graphs
 
-        self.discriminator.epoch(self.val_loader, x_preds)
+        self.discriminator.epoch(self.val_loader, self)
         # wandb.log({"Similarity": val_metric})
         wandb.log(val_metric)
         wandb.log({f"Val-{self.loss_fn}": val_loss})
@@ -431,7 +425,7 @@ def main(cfg : DictConfig) -> None:
 
 
 
-    DUNet.train(cfg["n_epochs"], val_every=cfg["val_every"])
+    DUNet.train(cfg["n_epochs"])
     # DUNet.sample_features(DUNet.test_loader[0], visualise="Final")
 
 if __name__ == "__main__":
