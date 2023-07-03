@@ -90,12 +90,21 @@ class ContinuousVectorMetrics:
 
         x_trues = []
         x_preds = []
+        # G = nx.Graph()
 
         total_loss = 0.
         counter = 0
         for ib, batch in enumerate(tqdm(loader, leave=False)):
             n_graphs = batch.num_graphs
             # print(f"batch has {n_graphs} graphs")
+
+            # g = nx.from_edgelist(batch.edge_index.T.cpu().numpy())
+            # g = nx.convert_node_labels_to_integers(g, first_label = G.order())
+            #
+            # G = nx.compose(G, g)
+
+
+
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
@@ -272,6 +281,14 @@ class ContinuousVectorMetrics:
 
         kdeplot(x = true_projection[:,0], y =  true_projection[:,1], color = "blue", ax = ax, alpha = 0.5, levels=5)
         kdeplot(x = pred_projection[:,0], y =  pred_projection[:,1], color="red", ax=ax, alpha = 0.5, levels=5)
+
+        # pos = {}
+        # print(G, pred_projection.T.shape)
+        # for node in G:
+        #     xy = pred_projection.T
+        #     pos[node] = [xy[0, node], xy[1, node]]
+        #
+        # nx.draw_networkx_edges(G, pos = pos, alpha=0.5, ax = ax)
 
         ax.scatter(*true_projection.T, label = "true", c = "blue", marker = "x", s = 3, zorder = 1000)
         ax.scatter(*pred_projection.T, label = "pred", c = "red", marker = "x", s = 3, zorder = 1000)

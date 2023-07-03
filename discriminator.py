@@ -79,6 +79,7 @@ class Discriminator(torch.nn.Module):
 
         vis_fn = "pca"
         # self.loss_fn = torch.nn.MSELoss()
+        self.x_dim = x_dim
         self.loss_fn = torch.nn.BCELoss()
         self.device = "cpu"
 
@@ -113,7 +114,7 @@ class Discriminator(torch.nn.Module):
         loader = self.prepare_data(val_loader, x_generated)
         loss, acc = self.test(loader)
 
-        print(f"Discriminator accuracy: {acc}, discriminator loss {loss}")
+        # print(f"Discriminator accuracy: {acc}, discriminator loss {loss}")
         wandb.log({"Discriminator-Accuracy":acc,
                    "Discriminator-Loss":loss})
 
@@ -166,24 +167,29 @@ class Discriminator(torch.nn.Module):
 
 
 
-    def train(self, loader):
+    def train(self, loader, n_epochs = 5):
         self.model.train()
 
-        for data in tqdm(loader, leave=False):
-            # print(data)
+        self.model = GCN(x_dim = self.x_dim, hidden_channels=64).double()
+        self.optimizer = torch.optim.Adam(self.model.parameters(),
+                                          lr=0.001)
 
-            # loss = 0.
-            # print(data.x.dtype, data.x.to(torch.double).dtype,  data.edge_index.dtype, data.batch.dtype)
-            out = self.model(data.x, data.edge_index, data.batch)
+        for i_epoch in tqdm(range(n_epochs), leave = False):
+            for data in loader:
+                # print(data)
 
-            # print(out.view(data.y.shape), data.y)
-            loss = self.loss_fn(out.view(data.y.shape), data.y.double())
-            # print(loss)
+                # loss = 0.
+                # print(data.x.dtype, data.x.to(torch.double).dtype,  data.edge_index.dtype, data.batch.dtype)
+                out = self.model(data.x, data.edge_index, data.batch)
+
+                # print(out.view(data.y.shape), data.y)
+                loss = self.loss_fn(out.view(data.y.shape), data.y.double())
+                # print(loss)
 
 
-            loss.backward(retain_graph  = True)
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+                loss.backward(retain_graph  = True)
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
 
     def test(self, loader):
