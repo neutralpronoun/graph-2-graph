@@ -70,7 +70,8 @@ class DiffusionUNet(torch.nn.Module):
         elif cfg["feature_type"] == "discrete":
             self.feat_type = "disc"
             self.diff_handler = DiscreteDiffusionFunctions()
-            self.loss_fn = torch.nn.MSELoss(reduction="mean")
+            self.loss_fn = torch.nn.BCELoss()
+            # self.loss_fn = torch.nn.MSELoss(reduction="mean")
             # self.loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
 
 
@@ -127,7 +128,7 @@ class DiffusionUNet(torch.nn.Module):
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
                                                batch_size=batch_size)
             self.val_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in val_graphs],
-                                               batch_size=int(batch_size/4))
+                                               batch_size=3)
             self.test_loader = [pyg.utils.from_networkx(g, group_node_attrs=all) for g in test_graphs]
 
 
@@ -136,11 +137,19 @@ class DiffusionUNet(torch.nn.Module):
             self.extra_features = SimpleNodeCycleFeatures()# ExtraFeatures()
             self.features_dim = 4
 
-        self.model = GraphUNet(in_channels=self.x_dim + 1 + self.features_dim, # Currently passing t as a node-level feature
-                                 hidden_channels=hidden_dim,
-                                 out_channels=self.x_dim,
-                                 depth=num_layers,
-                                 pool_ratios=0.2).to(self.device)
+
+        if cfg["model"] == "unet":
+            self.model = GraphUNet(in_channels=self.x_dim + 1 + self.features_dim, # Currently passing t as a node-level feature
+                                     hidden_channels=hidden_dim,
+                                     out_channels=self.x_dim,
+                                     depth=num_layers,
+                                     pool_ratios=0.2,
+                                     out_sigmoid=self.feat_type == "disc").to(self.device)
+        elif cfg["model"] == "gat":
+            self.model = GAT(in_channels = self.x_dim + self.features_dim + 1, # +1 for timesteps
+                             out_channels= self.x_dim,
+                             hidden_channels=hidden_dim,
+                             num_layers = num_layers).to(self.device)
 
         # self.model = EdgeCNN(in_channels = self.x_dim + 1 + self.features_dim, # +1 for timesteps, +3 for cycles
         #                  out_channels= self.x_dim,
@@ -155,10 +164,7 @@ class DiffusionUNet(torch.nn.Module):
         # else:
         #     self.ema_scheduler = None
 
-        # self.model = GAT(in_channels = self.x_dim + self.features_dim + 1, # +1 for timesteps
-        #                  out_channels= self.x_dim,
-        #                  hidden_channels=hidden_dim,
-        #                  num_layers = num_layers).to(self.device)
+
 
         # self.loss_fn = torch.nn.MSELoss(reduction="mean")
         self.optimizer = torch.optim.Adam(self.model.parameters(),
@@ -169,14 +175,18 @@ class DiffusionUNet(torch.nn.Module):
         self.diffusion_steps_sampling = diffusion_steps_sampling
 
 
-        if vis_fn == "pca":
+        if vis_fn == "pca" and self.feat_type == "cont":
             self.val_class = ContinuousVectorMetrics()
             self.vis_fn = self.val_class.vis_batch
             self.val_fn = self.val_class.batch_vector_similarity
-        elif vis_fn != "colormap":
-            self.vis_fn = cube_val_vis
         else:
-            self.vis_fn = colormap_vis
+            self.val_class = None
+            self.vis_fn = None
+        # elif vis_fn != "colormap":
+        #
+        #     self.vis_fn = cube_val_vis
+        # else:
+        #     self.vis_fn = colormap_vis
 
         self.discriminator = Discriminator(self.x_dim)
 
@@ -225,6 +235,7 @@ class DiffusionUNet(torch.nn.Module):
                 if self.feat_type == "cont":
                     loss = self.loss_fn(out, eta)
                 else:
+                    # print(out, x0)
                     loss = self.loss_fn(out, x0)
 
                 self.optimizer.zero_grad()
@@ -240,11 +251,11 @@ class DiffusionUNet(torch.nn.Module):
             if epoch_number  % self.vis_every == 0 or epoch_number == n_epochs - 1:
                 val_loss = self.validation_epoch(gif_first = gif_first,
                                                  epoch_number = epoch_number)
-            elif epoch_number % self.val_every == 0:
-                self.discriminator.epoch(self.val_loader, self)
+            # elif epoch_number % self.val_every == 0:
+            #     self.discriminator.epoch(self.val_loader, self)
 
 
-            pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
+            # pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             losses.append(epoch_loss)
 
 
@@ -255,7 +266,10 @@ class DiffusionUNet(torch.nn.Module):
         mean_val_metric = 0.
 
         if self.val_class is not None:
-            val_metric, val_loss = self.val_class.validation_by_item(self.val_loader, self, epoch_number=epoch_number)
+            val_metric, val_loss = self.val_class.validation_by_item(self.val_loader,
+                                                                     self,
+                                                                     discriminator=self.discriminator,
+                                                                     epoch_number=epoch_number)
         else:
             for ib_val, val_batch in enumerate(self.val_loader):
 
@@ -269,7 +283,7 @@ class DiffusionUNet(torch.nn.Module):
 
             # val_loss += val_batch_loss.item() / val_batch.num_graphs
 
-        self.discriminator.epoch(self.val_loader, self)
+        # self.discriminator.epoch(self.val_loader, self)
         # wandb.log({"Similarity": val_metric})
         wandb.log(val_metric)
         wandb.log({f"Val-{self.loss_fn}": val_loss})
@@ -288,11 +302,11 @@ class DiffusionUNet(torch.nn.Module):
         x = self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
         sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave=False)
-        sums = []
-        noise_amounts = []
-        every_frame = int(self.diffusion_steps / 100)
-        if gif_first:
-            frames = []
+        # sums = []
+        # noise_amounts = []
+        # every_frame = int(self.diffusion_steps / 100)
+        # if gif_first:
+        #     frames = []
         for t in sampling_pbar:
             eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
                                   self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
@@ -302,26 +316,27 @@ class DiffusionUNet(torch.nn.Module):
             if self.feat_type == "cont":
                 x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
             if self.feat_type == "disc":
-                x = self.diff_handler.remove_noise_step(x, t, add_noise = self.add_noise) # Don't need eta for this
+                x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
 
-            if visualise:
-                if self.feat_type == "cont":
-                    noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
-
-                    sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-                else:
-                    noise_amounts.append(torch.mean(eta_out).detach().cpu())
-
-                    sums.append(torch.mean(x).detach().cpu())
+            # if visualise:
+            #     if self.feat_type == "cont":
+            #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
+            #
+            #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
+            #     else:
+            #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
+            #
+            #         sums.append(torch.mean(x).detach().cpu())
 
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
 
-        node_loss = self.loss_fn(x, batch.x.to(self.device))
+        # print(x, batch.x.to(self.device))
+        node_loss = self.loss_fn(x, batch.x.to(x.dtype).to(self.device))
         if self.feat_type == "cont":
             distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to(self.device), dim=0))
         elif self.feat_type == "disc":
-            distribution_loss = self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
+            distribution_loss = 0. # self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
         loss = node_loss + self.dist_weighting * distribution_loss
 
         wandb.log({f"Node-{self.loss_fn}":node_loss,
@@ -376,12 +391,18 @@ def main(cfg : DictConfig) -> None:
     elif cfg["name"] == "reddit":
         reddit_graph = download_reddit()
         setup_wandb(cfg)
-        graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
+        if cfg["sampling_method"] == "ESWR":
+            graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
+        elif cfg["sampling_method"] == "CSWR":
+            graphs = CSWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
 
     elif cfg["name"] == "facebook":
         reddit_graph = download_facebook()
         setup_wandb(cfg)
-        graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
+        if cfg["sampling_method"] == "ESWR":
+            graphs = ESWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
+        elif cfg["sampling_method"] == "CSWR":
+            graphs = CSWR(reddit_graph, cfg["n_samples"], cfg["max_size"])
 
 
     # ring_graphs = get_cube_dataset(1000, max_graph_size=6)

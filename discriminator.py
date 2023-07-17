@@ -106,7 +106,7 @@ class Discriminator(torch.nn.Module):
             x_preds.append(x_pred)
         return x_preds
 
-    def epoch(self, val_loader, wrapper, x_generated = None):
+    def epoch(self, val_loader, wrapper = None, x_generated = None):
         if x_generated is None:
             x_generated = self.get_xpreds(val_loader, wrapper)
         loader = self.prepare_data(val_loader, x_generated)

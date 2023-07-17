@@ -11,6 +11,8 @@ import imageio
 import wandb
 import osmnx as ox
 from littleballoffur.exploration_sampling import MetropolisHastingsRandomWalkSampler
+from Datasets import vis_small_graph, CSWR
+from networkx import community as comm
 
 def cube_gif_vis(batch, frames, sums, noise_amounts, label):
     os.mkdir(f"{label}")
@@ -328,14 +330,26 @@ def remove_edge_attributes(graph):
 
 def road_dataset(n_graphs, max_graph_size, place = "Bristol, UK"):
     print("started road dataset")
-    bristol_network = nx.convert_node_labels_to_integers(nx.Graph(ox.graph_from_place(place, network_type="bike")))
+    graph = nx.convert_node_labels_to_integers(nx.Graph(ox.graph_from_place(place)))
     # ox.plot_graph(ox.graph_from_place('Bristol, UK'), node_size=0)
+    graphs = []
+    n_runs = 5
+    max_size=128
+    for run in tqdm(range(n_runs), leave=False):
+        partition = comm.louvain_communities(graph, resolution=5)
 
-    sampler = MetropolisHastingsRandomWalkSampler(number_of_nodes=max_graph_size)
+        for part in partition:
+            g = graph.subgraph(part)
+            if g.order() <= max_size:
+                graphs.append(nx.Graph(g))
 
-    graphs = [nx.convert_node_labels_to_integers(sampler.sample(bristol_network)) for _ in tqdm(range(n_graphs), leave=False)]
-    graphs = [normalise_coordinates(graph) for graph in graphs]
-    graphs = [remove_edge_attributes(graph) for graph in graphs]
+    # sampler = MetropolisHastingsRandomWalkSampler(number_of_nodes=np.random.randint(max_graph_size))
+    #
+    #
+    #
+    # graphs = [nx.convert_node_labels_to_integers(sampler.sample(bristol_network)) for _ in tqdm(range(n_graphs), leave=False)]
+    # graphs = [normalise_coordinates(graph) for graph in graphs]
+    # graphs = [remove_edge_attributes(graph) for graph in graphs]
 
     # for node in graphs[0].nodes(data=True):
     #     print(node)
@@ -350,17 +364,19 @@ def road_dataset(n_graphs, max_graph_size, place = "Bristol, UK"):
 
     # nx.draw(graphs[0], pos = pos)
     # cube_val_vis(batch, x, sums, noise_amounts, label, gif_first=False)
-    fig, axes = plt.subplots(nrows = 5, ncols = 5, figsize=(18,18))
+    fig, axes = plt.subplots(nrows = 8, ncols = 12, figsize=(24,16))
 
     for ir, row in enumerate(axes):
         for ic, ax in enumerate(row):
-            ax = cube_vis(graphs[ir*5 + ic], ax = ax)
-    plt.savefig("Train_examples.png")
-    try:
-        wandb.log({"Train_examples": wandb.Image(f"Train_examples.png")})
-    except:
-        pass
-    plt.close()
+            ax = vis_small_graph(graphs[ir*12 + ic], ax = ax)
+    plt.tight_layout(h_pad=0, w_pad=0)
+    # plt.show()
+    plt.savefig("Mum_roads.png", dpi=300)
+    # try:
+    #     wandb.log({"Train_examples": wandb.Image(f"Train_examples.png")})
+    # except:
+    #     pass
+    # plt.close()
 
     return graphs
 
@@ -368,7 +384,7 @@ def road_dataset(n_graphs, max_graph_size, place = "Bristol, UK"):
 
 
 if __name__ == "__main__":
-    road_dataset(100, 32)
+    road_dataset(200, 256)
     # print("CubeLattice is Main")
     # g = get_cube()
     # pos = attributes_to_position(g)

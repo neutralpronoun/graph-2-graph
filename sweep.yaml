@@ -14,11 +14,6 @@ parameters:
     distribution: int_uniform
     min: 64
     max: 512
-  add_noise_in_sampling:
-    distribution: categorical
-    values:
-      - True
-      - False
 #  diffusion_steps:
 #    distribution: int_uniform
 #    max: 3000

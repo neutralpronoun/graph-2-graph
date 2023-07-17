@@ -358,6 +358,9 @@ class DiscreteDiffusionFunctions:
             self.alpha_bars_sampling = torch.tensor(
                 [torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))]).to(self.device)
 
+            print(self.betas, self.alphas, self.alpha_bars)
+            print(self.betas_sampling, self.alphas_sampling, self.alpha_bars_sampling)
+            # quit()
         return self.alphas, self.alpha_bars, self.betas
 
         # fig = plt.figure(figsize=(8, 4))
@@ -381,10 +384,16 @@ class DiscreteDiffusionFunctions:
         else:
             alpha_t = self.alpha_bars[t]
         # alpha_t = self.alpha_bars[t]
-        Q = alpha_t * torch.eye(self.x_dim, device=self.device) + (1 - alpha_t) * self.feature_marginals
-        Q = Q.to(x.dtype)
+        # print(f"at step {t}", self.feature_marginals, self.feature_marginals.shape, alpha_t)
 
-        x[x.isinf()] = 1e6
+        Q = (alpha_t * torch.eye(self.x_dim, device=self.device)+ (1 - alpha_t) * self.feature_marginals).to(x.dtype)
+        # print(Q)
+        # Q = Q
+        # print(Q)
+        # Q = alpha_t * torch.eye(self.x_dim, device=self.device) + (1 - alpha_t) * self.feature_marginals
+        # Q = Q.to(x.dtype)
+
+        # x[x.isinf()] = 0.
         #
         # assert not torch.isinf(x).any(), f"Found infs in x (batch), {torch.sum(x.isinf())}"
         # assert not torch.isinf(Q).any(), "Found infs in transition matrix"
@@ -393,7 +402,8 @@ class DiscreteDiffusionFunctions:
         # assert not torch.isnan(Q).any(), "Found NaNs in transition matrix"
 
         noisy = x @ Q
-        noisy[noisy.isinf()] = 1e6
+        # noisy = torch.bernoulli(noisy)
+        # noisy[noisy.isinf()] = 0.
         # noisy = torch.squeeze(x @ Q)
         # print(x.shape, Q.shape, noisy.shape)
         # assert not torch.isinf(noisy).any(), f"Found infs in noisy data (probabilities), Sampling: {sampling}, {torch.sum(noisy.isinf())}"
@@ -423,8 +433,11 @@ class DiscreteDiffusionFunctions:
         # probX = probX.reshape(probX.size(0) * probX.size(1), -1)  # (bs * n, dx_out)
         # assert (abs(probX.sum(dim=-1) - 1) < 1e-4).all()
 
+
+        X_t = torch.bernoulli(probX)
+
         # Sample X
-        X_t = probX.round()# multinomial(1)  # (bs * n, 1)
+        # X_t = probX.round()# multinomial(1)  # (bs * n, 1)
         # print(x_dim_in, X_t, X_t.shape)
         # X_t = X_t.reshape(x_dim_in)  # (bs, n)
 
@@ -468,11 +481,14 @@ class DiscreteDiffusionFunctions:
         # noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
 
         # x = (1 / alpha_t.sqrt()) * (x - (1 - alpha_t) / (1 - alpha_t_bar).sqrt() * eta_out)
-        x = torch.round(x)
+        # print(torch.sum(x) / x.shape[0] * x.shape[1])
+        x = torch.bernoulli(x)# torch.round(x)
 
         if t > 0 and add_noise:  # self.diffusion_steps:
             assert not torch.isnan(x).any() and not torch.isinf(x).any(), f"Found NaNs or infs in x after removing noise at step {t}"
+            print("\nbefore noise application",torch.sum(x), torch.min(x), torch.max(x),"\n")
             x = self.apply_noise(x, t, sampling=True)
+            print("\nafter noise application",torch.sum(x), torch.min(x), torch.max(x),"\n")
             assert not torch.isnan(x).any() and not torch.isinf(x).any(), f"Found NaNs in x after adding sampling noise at step {t}"
             # z = torch.randn(x.shape).to(self.device)
             #

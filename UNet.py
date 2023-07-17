@@ -14,6 +14,9 @@ from torch_geometric.utils import (
 from torch_geometric.utils.repeat import repeat
 
 
+def dummy_return(x):
+    return x
+
 class GraphUNet(torch.nn.Module):
     r"""The Graph U-Net model from the `"Graph U-Nets"
     <https://arxiv.org/abs/1905.05178>`_ paper which implements a U-Net like
@@ -40,7 +43,8 @@ class GraphUNet(torch.nn.Module):
         depth: int,
         pool_ratios: Union[float, List[float]] = 0.5,
         sum_res: bool = True,
-        act: Union[str, Callable] = 'relu'
+        act: Union[str, Callable] = 'relu',
+        out_sigmoid: bool = False
     ):
         super().__init__()
         assert depth >= 1
@@ -50,6 +54,7 @@ class GraphUNet(torch.nn.Module):
         self.depth = depth
         self.pool_ratios = repeat(pool_ratios, depth)
         self.act = activation_resolver(act)
+        self.out_sigmoid = torch.sigmoid if out_sigmoid else dummy_return
 
         self.sum_res = sum_res
 
@@ -125,7 +130,7 @@ class GraphUNet(torch.nn.Module):
             x = self.up_convs[i](x, edge_index, edge_weight)
             x = self.act(x) if i < self.depth - 1 else x
 
-        return x
+        return self.out_sigmoid(x)
 
 
     def augment_adj(self, edge_index: Tensor, edge_weight: Tensor,

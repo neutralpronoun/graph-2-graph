@@ -16,6 +16,7 @@ from sklearn.preprocessing import OneHotEncoder
 import pickle
 import zipfile
 import wget
+from networkx import community as comm
 
 
 def vis_small_graph(graph, ax = None):
@@ -55,6 +56,8 @@ def vis_small_graph(graph, ax = None):
     if ax is None:
         plt.savefig("Cube_Example.png")
     else:
+        ax.axis('off')
+        # ax.axis('off')
         return ax
 
 def vis_big_graph(G, largest_cc=False, label=""):
@@ -254,18 +257,6 @@ def download_reddit(visualise = False):
     embeddings = pd.read_csv("web-redditEmbeddings-subreddits.csv", names=embedding_column_names).transpose()
     graph_data = pd.read_csv("soc-redditHyperlinks-title.tsv", sep = "\t")
 
-
-    # graph = nx.from_pandas_edgelist(graph_data, source="SOURCE_SUBREDDIT", target="TARGET_SUBREDDIT")
-    # print(graph)
-
-    # CGs = [graph.subgraph(c) for c in nx.connected_components(graph)]
-    # CGs = sorted(CGs, key=lambda x: x.number_of_nodes(), reverse=True)
-    # graph = CGs[0]
-
-    # vis_big_graph(graph, label = "Reddit")
-
-
-
     embeddings.columns = embeddings.iloc[0]
     embeddings = embeddings.drop(["COMPONENT"], axis = 0)
 
@@ -286,20 +277,6 @@ def download_reddit(visualise = False):
         if len(data) == 0:
             graph.remove_node(node[0])
 
-    embedding_subreddits = set(embeddings.columns)
-    # node_names = set(graph.nodes())
-    #
-    # print(embedding_subreddits - node_names)
-    # print(node_names - embedding_subreddits)
-    #
-    #
-    # for node in graph.nodes():
-    #     graph[node]["attrs"] = embeddings[node]
-    #
-    # for node in graph.nodes(data=True):
-    #     print(node)
-
-    print(graph)
     graph = nx.convert_node_labels_to_integers(graph)
     CGs = [graph.subgraph(c) for c in nx.connected_components(graph)]
     CGs = sorted(CGs, key=lambda x: x.number_of_nodes(), reverse=True)
@@ -317,12 +294,8 @@ def download_reddit(visualise = False):
     return graph
 
 def ESWR(graph, n_graphs, size):
-
-
     sampler = MetropolisHastingsRandomWalkSampler(number_of_nodes=size)
-
     graphs = [nx.convert_node_labels_to_integers(sampler.sample(graph)) for _ in tqdm(range(n_graphs), leave=False)]
-    print(graphs)
 
     fig, axes = plt.subplots(nrows = 5, ncols = 5, figsize=(18,18))
 
@@ -337,6 +310,32 @@ def ESWR(graph, n_graphs, size):
     except:
         pass
 
+    return graphs
+
+def CSWR(graph, n_runs, max_size, kwargs={"resolution":6}):
+
+    graphs = []
+
+    for run in tqdm(range(n_runs), leave=False):
+        partition = comm.louvain_communities(graph, **kwargs)
+
+        for part in partition:
+            g = graph.subgraph(part)
+            if g.order() <= max_size:
+                graphs.append(nx.Graph(g))
+
+    fig, axes = plt.subplots(nrows = 5, ncols = 5, figsize=(18,18))
+
+    for ir, row in enumerate(axes):
+        for ic, ax in enumerate(row):
+            ax = vis_small_graph(graphs[ir*5 + ic], ax = ax)
+    # plt.show()
+    plt.savefig("Train_examples.png")
+    plt.close()
+    try:
+        wandb.log({"Train_examples": wandb.Image(f"Train_examples.png")})
+    except:
+        pass
 
     return graphs
 
@@ -344,7 +343,7 @@ def ESWR(graph, n_graphs, size):
 
 if __name__ == "__main__":
     reddit_graph = download_reddit()
-    graphs = ESWR(reddit_graph, 100, 48)
+    graphs = CSWR(reddit_graph, 5)
 
 
 

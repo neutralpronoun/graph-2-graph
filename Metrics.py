@@ -76,7 +76,7 @@ sqrtm = MatrixSquareRoot.apply
 class ContinuousVectorMetrics:
     def __init__(self,
                  sim_fn = torch.cosine_similarity,
-                 decomp_fn = UMAP):
+                 decomp_fn = PCA):
         try:
             self.decomp = decomp_fn(n_components=2, n_jobs=6)
         except:
@@ -85,63 +85,46 @@ class ContinuousVectorMetrics:
         self.sim_fn = sim_fn
 
 
-    def validation_by_item(self, loader, wrapper, epoch_number = 0):
+    def validation_by_item(self, loader, wrapper, discriminator = None, epoch_number = 0):
         # model refers to the actual GNN, wrapper to the diffusion construct using it
 
         x_trues = []
         x_preds = []
+        x_preds_batch = []
         # G = nx.Graph()
 
         total_loss = 0.
         counter = 0
         for ib, batch in enumerate(tqdm(loader, leave=False)):
             n_graphs = batch.num_graphs
-            # print(f"batch has {n_graphs} graphs")
-
-            # g = nx.from_edgelist(batch.edge_index.T.cpu().numpy())
-            # g = nx.convert_node_labels_to_integers(g, first_label = G.order())
-            #
-            # G = nx.compose(G, g)
-
-
 
             x_slicing_indices = []
             for ig in range(n_graphs):
                 example = batch.get_example(ig).x
-                # print(example.shape)
                 x_trues += [example.detach().cpu()]
                 x_slicing_indices += [example.shape[0]]
 
-
-
-        # for ib, batch in enumerate(loader):
-
-            # for batch in loader:
-            # if ib == 0:
-            #     loss, x_pred = wrapper.sample_features(batch,
-            #                                            visualise = f"val_vis/Epoch_{epoch_number}",
-            #                                             gif_first = False)
-            # else:
             loss, x_pred = wrapper.sample_features(batch,
                                                    visualise = None,
                                                    gif_first = False)
+            x_preds_batch.append(x_pred.detach().cpu())
 
             total_loss += loss.item() / batch.num_graphs
             counter += 1
 
             running_count = 0
             for indices in x_slicing_indices:
-                # print(x_pred.shape, indices, running_count, running_count + indices)
                 i_x_pred = x_pred[running_count:running_count+indices, :]
-                # print(x_pred)
                 x_preds += [i_x_pred.detach().cpu()]
                 running_count += indices
 
-        # x_trues = torch.cat(x_trues, dim=0)
-        # print(x_trues[0], x_preds[0])
+            del x_pred
+
+        if discriminator is not None:
+            discriminator.epoch(loader, x_generated=x_preds_batch)
+
         x_trues = torch.cat(x_trues, dim = 0)
         x_preds = torch.cat(x_preds, dim = 0)
-        # print(x_preds.shape, x_trues.shape)
         sim = self.vector_similarity(x_trues, x_preds)
         wass = self.MeanWasserstein(x_trues, x_preds)
 
@@ -155,6 +138,8 @@ class ContinuousVectorMetrics:
 
 
         self.vis(x_trues, x_preds)
+
+        del x_trues, x_preds
 
         return metrics, total_loss / counter
 
