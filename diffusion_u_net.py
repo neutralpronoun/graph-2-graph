@@ -3,6 +3,7 @@ from torch.nn import CosineSimilarity
 import os
 import wandb
 import copy
+import random
 import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -126,7 +127,7 @@ class DiffusionUNet(torch.nn.Module):
                 n_val = val_prop
                 n_train = int((n_graphs - n_val) * (1 - test_prop))
 
-            nx_graph_list.shuffle()
+            random.shuffle(nx_graph_list)
 
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
 
