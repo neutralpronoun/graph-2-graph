@@ -315,10 +315,14 @@ class DiffusionUNet(torch.nn.Module):
         # every_frame = int(self.diffusion_steps / 100)
         # if gif_first:
         #     frames = []
+
         for t in sampling_pbar:
-            eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-                                  self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-                                  x), dim = 1),
+            x_in = torch.full((batch.x.shape[0], 1), t).to(self.device)
+            extra_features = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+
+
+
+            eta_out = self.model(torch.cat((x_in, extra_features, x), dim = 1),
                                  edge_index)
 
             if self.feat_type == "cont":
