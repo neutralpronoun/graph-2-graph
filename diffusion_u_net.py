@@ -38,6 +38,8 @@ class DiffusionUNet(torch.nn.Module):
 
         batch_size = int(cfg["batch_size"])
         val_prop = float(cfg["val_prop"])
+        if val_prop >= 1:
+            val_prop = int(val_prop)
         test_prop = float(cfg["test_prop"])
 
         hidden_dim = int(cfg["hidden_dim"])
@@ -118,7 +120,11 @@ class DiffusionUNet(torch.nn.Module):
 
         else:
             n_graphs = len(nx_graph_list)
-            n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
+            if val_prop <= 1:
+                n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
+            else:
+                n_val = val_prop
+                n_train = int((n_graphs - val_prop) * (1 - test_prop))
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
 
             # print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
