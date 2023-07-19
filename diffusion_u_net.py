@@ -187,8 +187,10 @@ class DiffusionUNet(torch.nn.Module):
         #     self.vis_fn = cube_val_vis
         # else:
         #     self.vis_fn = colormap_vis
-
-        self.discriminator = Discriminator(self.x_dim)
+        if cfg["use_discriminator"]:
+            self.discriminator = Discriminator(self.x_dim)
+        else:
+            self.discriminator = None
 
 
         # self.sigmas = self.noise_schedule(diffusion_steps, schedule_type)
@@ -330,6 +332,7 @@ class DiffusionUNet(torch.nn.Module):
 
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
+            x = x.to("cpu")
 
         # print(x, batch.x.to(self.device))
         node_loss = self.loss_fn(x, batch.x.to(x.dtype).to(self.device))

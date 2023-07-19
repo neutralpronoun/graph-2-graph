@@ -16,6 +16,7 @@ val_prop: 0.05
 test_prop: 0.1
 n_epochs : 50000
 batch_size : 36
+use_discriminator: False
 vis_every: 1000
 val_every  : 1000
 

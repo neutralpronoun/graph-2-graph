@@ -61,10 +61,6 @@ class GCN(torch.nn.Module):
         return torch.sigmoid(x)
 
 
-
-
-
-
 class Discriminator(torch.nn.Module):
     def __init__(self, x_dim):
         super(Discriminator, self).__init__()
