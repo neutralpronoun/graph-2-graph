@@ -200,6 +200,7 @@ class DiffusionUNet(torch.nn.Module):
         # else:
         #     self.vis_fn = colormap_vis
         if bool(cfg["use_discriminator"]):
+            print("Using discriminator")
             self.discriminator = Discriminator(self.x_dim)
         else:
             print("Not using discriminator")
