@@ -8,7 +8,7 @@ output_dir: outputs
 feature_type: continuous
 
 # N_runs for CSWR
-n_samples : 5
+n_samples : 20
 max_size  : 256
 sampling_method: CSWR
 
