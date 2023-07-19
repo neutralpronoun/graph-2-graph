@@ -12,7 +12,7 @@ n_samples : 20
 max_size  : 256
 sampling_method: CSWR
 
-val_prop: 100 # If integer gives total size of validation set - heavy on gpu!
+val_prop: 50 # If integer gives total size of validation set - heavy on gpu!
 test_prop: 0.1
 n_epochs : 50000
 batch_size : 36
