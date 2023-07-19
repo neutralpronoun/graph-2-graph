@@ -199,9 +199,10 @@ class DiffusionUNet(torch.nn.Module):
         #     self.vis_fn = cube_val_vis
         # else:
         #     self.vis_fn = colormap_vis
-        if cfg["use_discriminator"]:
+        if bool(cfg["use_discriminator"]):
             self.discriminator = Discriminator(self.x_dim)
         else:
+            print("Not using discriminator")
             self.discriminator = None
 
 
@@ -269,7 +270,7 @@ class DiffusionUNet(torch.nn.Module):
             #     self.discriminator.epoch(self.val_loader, self)
 
 
-            # pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
+            pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             losses.append(epoch_loss)
 
 
