@@ -315,30 +315,30 @@ class DiffusionUNet(torch.nn.Module):
         # every_frame = int(self.diffusion_steps / 100)
         # if gif_first:
         #     frames = []
+        with torch.no_grad():
+            for t in sampling_pbar:
+                x_in = torch.full((batch.x.shape[0], 1), t).to(self.device)
+                extra_features = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
 
-        for t in sampling_pbar:
-            x_in = torch.full((batch.x.shape[0], 1), t).to(self.device)
-            extra_features = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
 
 
+                eta_out = self.model(torch.cat((x_in, extra_features, x), dim = 1),
+                                     edge_index)
 
-            eta_out = self.model(torch.cat((x_in, extra_features, x), dim = 1),
-                                 edge_index)
+                if self.feat_type == "cont":
+                    x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
+                if self.feat_type == "disc":
+                    x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
 
-            if self.feat_type == "cont":
-                x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
-            if self.feat_type == "disc":
-                x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
-
-            # if visualise:
-            #     if self.feat_type == "cont":
-            #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
-            #
-            #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-            #     else:
-            #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
-            #
-            #         sums.append(torch.mean(x).detach().cpu())
+                # if visualise:
+                #     if self.feat_type == "cont":
+                #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
+                #
+                #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
+                #     else:
+                #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
+                #
+                #         sums.append(torch.mean(x).detach().cpu())
 
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
