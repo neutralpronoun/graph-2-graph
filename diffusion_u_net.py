@@ -124,7 +124,7 @@ class DiffusionUNet(torch.nn.Module):
                 n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
             else:
                 n_val = val_prop
-                n_train = int((n_graphs - val_prop) * (1 - test_prop))
+                n_train = int((n_graphs - n_val) * (1 - test_prop))
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
 
             # print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
@@ -134,7 +134,7 @@ class DiffusionUNet(torch.nn.Module):
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
                                                batch_size=batch_size)
             self.val_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in val_graphs],
-                                               batch_size=batch_size)
+                                               batch_size=1)
             self.test_loader = [pyg.utils.from_networkx(g, group_node_attrs=all) for g in test_graphs]
 
 
