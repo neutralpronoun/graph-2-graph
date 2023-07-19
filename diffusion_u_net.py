@@ -260,6 +260,8 @@ class DiffusionUNet(torch.nn.Module):
                 epoch_loss += loss.item() / batch.num_graphs
                 wandb.log({f"Train/Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
 
+                pbar_batch.set_description(f"Epoch: {epoch} Batch: {str(loss.item())[:4]}")
+
             wandb.log({f"Train/{self.loss_fn}":epoch_loss})
 
 
@@ -270,7 +272,7 @@ class DiffusionUNet(torch.nn.Module):
             #     self.discriminator.epoch(self.val_loader, self)
 
 
-            pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
+
             losses.append(epoch_loss)
 
 
