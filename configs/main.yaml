@@ -9,26 +9,26 @@ feature_type: continuous
 
 # N_runs for CSWR
 n_samples : 5
-max_size  : 64
+max_size  : 256
 sampling_method: CSWR
 
 val_prop: 0.05
 test_prop: 0.1
-n_epochs : 5000
+n_epochs : 50000
 batch_size : 36
-vis_every: 500
-val_every  : 500
+vis_every: 1000
+val_every  : 1000
 
 model : gat
-n_layers : 2
-hidden_dim : 256
+n_layers : 5
+hidden_dim : 512
 extra_features: cycles
 
 # Beta values are 10**{value} in code
-min_beta: -6
+min_beta: -4
 max_beta: -2.5
-min_beta_sampling: -4
-max_beta_sampling: -1
+min_beta_sampling: -5.5
+max_beta_sampling: -2
 diffusion_steps: 2000
 diffusion_steps_sampling: 1000
 distribution_weighting: 1.
