@@ -16,7 +16,7 @@ val_prop: 100 # If integer gives total size of validation set - heavy on gpu!
 test_prop: 0.1
 n_epochs : 50000
 batch_size : 36
-use_discriminator: False
+use_discriminator: True
 vis_every: 1000
 val_every  : 1000
 
