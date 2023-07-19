@@ -1,9 +1,9 @@
 name: bike-networks
-n_samples : 3200
-max_size  : 24
+n_samples : 6400
+max_size  : 64
 
-n_layers : 5
-hidden_dim : 32
+n_layers : 3
+hidden_dim : 64
 diffusion_steps: 2000
 
 n_epochs : 10000
