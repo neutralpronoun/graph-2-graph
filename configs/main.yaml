@@ -9,7 +9,7 @@ feature_type: continuous
 
 # N_runs for CSWR
 n_samples : 20
-max_size  : 256
+max_size  : 128
 sampling_method: CSWR
 
 val_prop: 0.05 # If integer gives total size of validation set - heavy on gpu!
