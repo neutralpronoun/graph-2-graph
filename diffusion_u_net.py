@@ -3,6 +3,7 @@ from torch.nn import CosineSimilarity
 import os
 import wandb
 import copy
+import random
 import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -124,12 +125,17 @@ class DiffusionUNet(torch.nn.Module):
                 n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
             else:
                 n_val = val_prop
-                n_train = int((n_graphs - val_prop) * (1 - test_prop))
+                n_train = int((n_graphs - n_val) * (1 - test_prop))
+
+            random.shuffle(nx_graph_list)
+
             train_graphs, val_graphs, test_graphs = nx_graph_list[:n_train], nx_graph_list[n_train:n_train+n_val], nx_graph_list[n_train+n_val:]
 
             # print(train_graphs[0], pyg.utils.from_networkx(train_graphs[0]))
             # print(list(nx_graph_list[0].nodes(data=True)))
             self.x_dim = list(nx_graph_list[0].nodes(data=True))[0][1]["attrs"].shape[0]
+
+
 
             self.train_loader = pyg.loader.DataLoader([pyg.utils.from_networkx(g, group_node_attrs=all) for g in train_graphs],
                                                batch_size=batch_size)
@@ -204,9 +210,11 @@ class DiffusionUNet(torch.nn.Module):
         #     self.vis_fn = cube_val_vis
         # else:
         #     self.vis_fn = colormap_vis
-        if cfg["use_discriminator"]:
+        if bool(cfg["use_discriminator"]):
+            print("Using discriminator")
             self.discriminator = Discriminator(self.x_dim)
         else:
+            print("Not using discriminator")
             self.discriminator = None
 
 
@@ -264,6 +272,8 @@ class DiffusionUNet(torch.nn.Module):
                 epoch_loss += loss.item() / batch.num_graphs
                 wandb.log({f"Train/Batch-{self.loss_fn}":loss.item() / batch.num_graphs})
 
+                pbar_batch.set_description(f"Epoch: {epoch} Batch: {str(loss.item())[:4]}")
+
             wandb.log({f"Train/{self.loss_fn}":epoch_loss})
 
 
@@ -274,7 +284,7 @@ class DiffusionUNet(torch.nn.Module):
             #     self.discriminator.epoch(self.val_loader, self)
 
 
-            # pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
+
             losses.append(epoch_loss)
 
 
@@ -326,26 +336,30 @@ class DiffusionUNet(torch.nn.Module):
         # every_frame = int(self.diffusion_steps / 100)
         # if gif_first:
         #     frames = []
-        for t in sampling_pbar:
-            eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-                                  self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-                                  x), dim = 1),
-                                 edge_index)
+        with torch.no_grad():
+            for t in sampling_pbar:
+                x_in = torch.full((batch.x.shape[0], 1), t).to(self.device)
+                extra_features = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
 
-            if self.feat_type == "cont":
-                x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
-            if self.feat_type == "disc":
-                x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
 
-            # if visualise:
-            #     if self.feat_type == "cont":
-            #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
-            #
-            #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-            #     else:
-            #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
-            #
-            #         sums.append(torch.mean(x).detach().cpu())
+
+                eta_out = self.model(torch.cat((x_in, extra_features, x), dim = 1),
+                                     edge_index)
+
+                if self.feat_type == "cont":
+                    x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
+                if self.feat_type == "disc":
+                    x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
+
+                # if visualise:
+                #     if self.feat_type == "cont":
+                #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
+                #
+                #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
+                #     else:
+                #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
+                #
+                #         sums.append(torch.mean(x).detach().cpu())
 
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means

@@ -9,16 +9,16 @@ feature_type: continuous
 
 # N_runs for CSWR
 n_samples : 20
-max_size  : 256
+max_size  : 128
 sampling_method: CSWR
 
-val_prop: 50 # If integer gives total size of validation set - heavy on gpu!
+val_prop: 0.05 # If integer gives total size of validation set - heavy on gpu!
 test_prop: 0.1
 n_epochs : 50000
-batch_size : 36
-use_discriminator: True
-vis_every: 1000
-val_every  : 1000
+batch_size : 128
+use_discriminator: False
+vis_every: 2500
+val_every  : 2500
 
 model : gat
 depth : 5
@@ -27,10 +27,10 @@ hidden_dim : 512
 extra_features: cycles
 
 # Beta values are 10**{value} in code
-min_beta: -4
-max_beta: -2.5
-min_beta_sampling: -5.5
-max_beta_sampling: -2
+min_beta: -6
+max_beta: -2
+min_beta_sampling: -4
+max_beta_sampling: -1
 diffusion_steps: 2000
 diffusion_steps_sampling: 1000
 distribution_weighting: 1.
