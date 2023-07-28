@@ -194,14 +194,15 @@ class Discriminator(torch.nn.Module):
         correct = 0
         total = 0
         loader_pbar = tqdm(loader)
-        for data in loader_pbar:
-            out = self.model(data.x, data.edge_index, data.batch)
-            # pred = out.argmax(dim = 1)
-            pred = torch.round(out).flatten()
-            # print(pred, data.y)
-            loss = self.loss_fn(out.view(data.y.shape), data.y.double())
-            correct += int((pred == data.y).sum())
-            total += data.y.shape[0]
+        with torch.no_grad():
+            for data in loader_pbar:
+                out = self.model(data.x, data.edge_index, data.batch)
+                # pred = out.argmax(dim = 1)
+                pred = torch.round(out).flatten()
+                # print(pred, data.y)
+                loss = self.loss_fn(out.view(data.y.shape), data.y.double())
+                correct += int((pred == data.y).sum())
+                total += data.y.shape[0]
 
 
         # Accuracy

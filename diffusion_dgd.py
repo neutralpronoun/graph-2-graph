@@ -26,6 +26,7 @@ from Metrics import *
 from Datasets import *
 from Diffusion import *
 from discriminator import Discriminator
+from DiGress import GraphTransformer, DummyActivation, PlaceHolder, to_dense
 # os.chdir("graph-2-graph")
 
 import sys,os
@@ -120,7 +121,7 @@ class DiffusionUNet(torch.nn.Module):
 
         else:
             n_graphs = len(nx_graph_list)
-            if val_prop <= 1:
+            if val_prop < 1:
                 n_train, n_val = int(n_graphs * (1 - val_prop - test_prop)), int(n_graphs * val_prop)
             else:
                 n_val = val_prop
@@ -167,6 +168,26 @@ class DiffusionUNet(torch.nn.Module):
                              out_channels= self.x_dim,
                              hidden_channels=hidden_dim,
                              num_layers = num_layers).to(self.device)
+
+        elif cfg["model"] == "dgd":
+
+            input_dims = {"X":self.x_dim + self.features_dim,
+                          "E":1,
+                          "y":1}
+
+            output_dims = {"X":self.x_dim,
+                           "E":1,
+                           "y":1}
+
+            self.model = GraphTransformer(n_layers=cfg["n_layers"],
+                                          input_dims=input_dims,
+                                          hidden_mlp_dims=cfg["hidden_mlp_dims"],
+                                          hidden_dims=cfg["hidden_dims"],
+                                          output_dims=output_dims,
+                                          act_fn_in=DummyActivation(),
+                                          act_fn_out=DummyActivation()).to(self.device)
+
+        print(f"Using model:\n{self.model}")
 
         # self.model = EdgeCNN(in_channels = self.x_dim + 1 + self.features_dim, # +1 for timesteps, +3 for cycles
         #                  out_channels= self.x_dim,
@@ -246,13 +267,23 @@ class DiffusionUNet(torch.nn.Module):
                 eta = torch.randn_like(x0).to(self.device)
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
-                noisy_feat = torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-                                        self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                         noisy_feat), dim=1)
-                out = self.model(noisy_feat, batch.edge_index.to(self.device))
+                # out = self.model(noisy_feat, batch.edge_index.to(self.device))
+                dense_data, node_mask = to_dense(noisy_feat.to(self.device),
+                                                 batch.edge_index.to(self.device),
+                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
+                                                 batch.batch.to(self.device))
+                # dense_data["y"] = t
+                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
+
+                out = self.model(dense_data.X.to(self.device),
+                                 dense_data.E.to(self.device).unsqueeze(-1),
+                                 dense_data.y.to(self.device).unsqueeze(0),
+                                 node_mask.to(self.device))
 
                 if self.feat_type == "cont":
-                    loss = self.loss_fn(out, eta)
+                    loss = self.loss_fn(out.X, eta)
                 else:
                     # print(out, x0)
                     loss = self.loss_fn(out, x0)
@@ -320,33 +351,41 @@ class DiffusionUNet(torch.nn.Module):
         self.model.eval()
         x = self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
-        sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave=False)
-        # sums = []
-        # noise_amounts = []
-        # every_frame = int(self.diffusion_steps / 100)
-        # if gif_first:
-        #     frames = []
+        sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)))
+
         for t in sampling_pbar:
-            eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-                                  self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-                                  x), dim = 1),
-                                 edge_index)
+            print(f"timestep {t}")
+            # eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
+            #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+            #                       x), dim = 1),
+            #                      edge_index)
+
+            # noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
+            extra_feat = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+            # print(extra_feat.shape, x.shape)
+            noisy_feat = torch.cat((extra_feat,
+                                    x.squeeze()), dim=1)
+            # out = self.model(noisy_feat, batch.edge_index.to(self.device))
+            dense_data, node_mask = to_dense(noisy_feat.to(self.device),
+                                             batch.edge_index.to(self.device),
+                                             torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
+                                                 torch.float),
+                                             batch.batch.to(self.device))
+            # dense_data["y"] = t
+            # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
+
+            eta_out = self.model(dense_data.X.to(self.device),
+                             dense_data.E.to(self.device).unsqueeze(-1),
+                             dense_data.y.to(self.device).unsqueeze(0),
+                             node_mask.to(self.device)).X
+
+
 
             if self.feat_type == "cont":
                 x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
             if self.feat_type == "disc":
                 x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
-
-            # if visualise:
-            #     if self.feat_type == "cont":
-            #         noise_amounts.append(torch.mean((eta_out * self.feature_vars) + self.feature_means).detach().cpu())
-            #
-            #         sums.append(torch.mean((x * self.feature_vars) + self.feature_means).detach().cpu())
-            #     else:
-            #         noise_amounts.append(torch.mean(eta_out).detach().cpu())
-            #
-            #         sums.append(torch.mean(x).detach().cpu())
-
+        x = x.squeeze()
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
             x = x.to("cpu")
@@ -365,7 +404,7 @@ class DiffusionUNet(torch.nn.Module):
         return loss, x
 
 
-@hydra.main(version_base='1.1', config_path='configs', config_name="main")
+@hydra.main(version_base='1.1', config_path='configs', config_name="dgd")
 def main(cfg : DictConfig) -> None:
     # print(cfg)
     # print(OmegaConf.to_yaml(cfg))

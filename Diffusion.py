@@ -188,7 +188,6 @@ class ContinuousDiffusionFunctions:
                 x0 = torch.cat((x0, x))
 
         # print(torch.var(x0, dim = 0), torch.max(x0, dim = 0)[0])
-
         feature_vars = torch.mean(x0, dim=0).to(self.device)
 
         if torch.sum(torch.abs(feature_vars)) < 1e-3:

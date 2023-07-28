@@ -136,8 +136,10 @@ class ContinuousVectorMetrics:
             self.decomp.fit(x_trues.detach().cpu().numpy())
             self.decomp_fitted = True
 
-
-        self.vis(x_trues, x_preds)
+        if x_trues.shape[1] > 2:
+            self.vis(x_trues, x_preds)
+        else:
+            self.vis_hist(x_trues, x_preds)
 
         del x_trues, x_preds
 
@@ -301,6 +303,28 @@ class ContinuousVectorMetrics:
                 pass
         else:
             return ax
+
+    def vis_hist(self, true, pred, label = "histogram"):
+        true_values = torch.flatten(true).cpu().numpy()
+        pred_values = torch.flatten(pred).cpu().numpy()
+
+        fig, ax = plt.subplots(figsize = (8,6))
+
+        ax.hist(true_values, label = "True values", histtype="step", bins = 30)
+        ax.hist(pred_values, label = "Pred values", histtype="step", bins = 30)
+
+        ax.legend(shadow=True)
+
+        # if not was_given_ax:
+        plt.savefig(f"{label}.png")
+        plt.close()
+
+        try:
+            wandb.log({"Projected_Vectors": wandb.Image(f"{label}.png")})
+        except:
+            pass
+        # else:
+        #     return ax
 
 
     # plt.show()

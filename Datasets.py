@@ -339,11 +339,59 @@ def CSWR(graph, n_runs, max_size, kwargs={"resolution":6}):
 
     return graphs
 
+def get_community_graph(size = 50, proportions = [0.6, 0.3, 0.1], P_intra = 0.5, P_inter=0.05):
+
+    sizes = (np.array(proportions) * size).astype(int).tolist()#
+
+    means = [15, 10, 5]
+
+    subgraphs = []
+    counter = 0
+    for i_size, size in enumerate(sizes):
+        g = nx.Graph()
+
+        for i in range(counter, counter + size):
+            g.add_node(i, attrs=np.random.randn(2) + means[i_size])
+
+        counter += size
+        subgraphs.append(g)
+
+
+
+    for g in subgraphs:
+        for n1 in g.nodes():
+            for n2 in g.nodes():
+                if np.random.random() <= P_intra:
+                    g.add_edge(n1, n2)
+
+    node_identifiers = [list(g.nodes()) for g in subgraphs]
+
+    G = nx.Graph()
+    for g in subgraphs:
+        G = nx.compose(G, g)
+
+    for ids_1 in node_identifiers:
+        for ids_2 in node_identifiers:
+            if ids_1 == ids_2:
+                pass
+            else:
+                for n1 in ids_1:
+                    for n2 in ids_2:
+                        if np.random.random() <= P_inter:
+                            G.add_edge(n1, n2)
+
+    return G
+
+
+def get_community_dataset(n_samples):
+    return [get_community_graph() for _ in range(n_samples)]
 
 
 if __name__ == "__main__":
-    reddit_graph = download_reddit()
-    graphs = CSWR(reddit_graph, 5)
+    # reddit_graph = download_reddit()
+    # graphs = CSWR(reddit_graph, 5)
+
+    get_community_graph()
 
 
 
