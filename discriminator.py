@@ -77,7 +77,7 @@ class Discriminator(torch.nn.Module):
         # self.loss_fn = torch.nn.MSELoss()
         self.x_dim = x_dim
         self.loss_fn = torch.nn.BCELoss()
-        self.device = "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.model = GCN(x_dim = x_dim, hidden_channels=64).double()
         print(self.model)
@@ -166,7 +166,7 @@ class Discriminator(torch.nn.Module):
     def train(self, loader, n_epochs = 5):
         self.model.train()
 
-        self.model = GCN(x_dim = self.x_dim, hidden_channels=64).double()
+        self.model = GCN(x_dim = self.x_dim, hidden_channels=64).double().to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=0.001)
 
@@ -179,11 +179,11 @@ class Discriminator(torch.nn.Module):
                 out = self.model(data.x, data.edge_index, data.batch)
 
                 # print(out.view(data.y.shape), data.y)
-                loss = self.loss_fn(out.view(data.y.shape), data.y.double())
+                loss = self.loss_fn(out.view(data.y.shape).to(self.device), data.y.double().to(self.device))
                 # print(loss)
 
 
-                loss.backward(retain_graph  = True)
+                loss.backward()#retain_graph  = True)
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
@@ -200,8 +200,8 @@ class Discriminator(torch.nn.Module):
                 # pred = out.argmax(dim = 1)
                 pred = torch.round(out).flatten()
                 # print(pred, data.y)
-                loss = self.loss_fn(out.view(data.y.shape), data.y.double())
-                correct += int((pred == data.y).sum())
+                loss = self.loss_fn(out.view(data.y.shape).to(self.device), data.y.double().to(self.device))
+                correct += int((pred.cpu() == data.y).sum())
                 total += data.y.shape[0]
 
 

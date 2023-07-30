@@ -76,7 +76,7 @@ sqrtm = MatrixSquareRoot.apply
 class ContinuousVectorMetrics:
     def __init__(self,
                  sim_fn = torch.cosine_similarity,
-                 decomp_fn = PCA):
+                 decomp_fn = UMAP):
         try:
             self.decomp = decomp_fn(n_components=2, n_jobs=6)
         except:
@@ -293,6 +293,8 @@ class ContinuousVectorMetrics:
         ax.set_ylim(ylim)
         ax.legend(shadow = True)
 
+        ax.set_title(f"{self.decomp}")
+
         if not was_given_ax:
             plt.savefig(f"{label}.png")
             plt.close()
@@ -305,13 +307,17 @@ class ContinuousVectorMetrics:
             return ax
 
     def vis_hist(self, true, pred, label = "histogram"):
-        true_values = torch.flatten(true).cpu().numpy()
-        pred_values = torch.flatten(pred).cpu().numpy()
+        # true_values = torch.flatten(true).cpu().numpy()
+        # pred_values = torch.flatten(pred).cpu().numpy()
 
         fig, ax = plt.subplots(figsize = (8,6))
 
-        ax.hist(true_values, label = "True values", histtype="step", bins = 30)
-        ax.hist(pred_values, label = "Pred values", histtype="step", bins = 30)
+        ax.scatter(true.cpu().numpy()[:, 0], true.cpu().numpy()[:, 1], label="True", marker = "+", alpha=0.5)
+        ax.scatter(pred.cpu().numpy()[:, 0], pred.cpu().numpy()[:, 1], label="Pred", marker = "x", alpha=0.5)
+
+
+        # ax.hist(true_values, label = "True values", histtype="step", bins = 30)
+        # ax.hist(pred_values, label = "Pred values", histtype="step", bins = 30)
 
         ax.legend(shadow=True)
 

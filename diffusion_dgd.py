@@ -38,6 +38,7 @@ class DiffusionUNet(torch.nn.Module):
         super(DiffusionUNet, self).__init__()
 
         batch_size = int(cfg["batch_size"])
+        self.bs = batch_size
         val_prop = float(cfg["val_prop"])
         if val_prop >= 1:
             val_prop = int(val_prop)
@@ -275,15 +276,17 @@ class DiffusionUNet(torch.nn.Module):
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
                                                  batch.batch.to(self.device))
                 # dense_data["y"] = t
-                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
+
+                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(-1).shape, node_mask.shape)
 
                 out = self.model(dense_data.X.to(self.device),
                                  dense_data.E.to(self.device).unsqueeze(-1),
-                                 dense_data.y.to(self.device).unsqueeze(0),
+                                 dense_data.y.to(self.device).unsqueeze(-1),
                                  node_mask.to(self.device))
 
                 if self.feat_type == "cont":
-                    loss = self.loss_fn(out.X, eta)
+                    # print(out.X, eta)
+                    loss = self.loss_fn(out.X.flatten(), eta.flatten())
                 else:
                     # print(out, x0)
                     loss = self.loss_fn(out, x0)
@@ -351,40 +354,40 @@ class DiffusionUNet(torch.nn.Module):
         self.model.eval()
         x = self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
-        sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)))
+        sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave = False)
+        with torch.no_grad():
+            for t in sampling_pbar:
+                # print(f"timestep {t}")
+                # eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
+                #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                #                       x), dim = 1),
+                #                      edge_index)
 
-        for t in sampling_pbar:
-            print(f"timestep {t}")
-            # eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-            #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-            #                       x), dim = 1),
-            #                      edge_index)
+                # noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
+                extra_feat = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+                # print(extra_feat.shape, x.shape)
+                noisy_feat = torch.cat((extra_feat,
+                                        x.squeeze()), dim=1)
+                # out = self.model(noisy_feat, batch.edge_index.to(self.device))
+                dense_data, node_mask = to_dense(noisy_feat.to(self.device),
+                                                 batch.edge_index.to(self.device),
+                                                 torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
+                                                     torch.float),
+                                                 batch.batch.to(self.device))
+                # dense_data["y"] = t
+                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
 
-            # noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
-            extra_feat = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
-            # print(extra_feat.shape, x.shape)
-            noisy_feat = torch.cat((extra_feat,
-                                    x.squeeze()), dim=1)
-            # out = self.model(noisy_feat, batch.edge_index.to(self.device))
-            dense_data, node_mask = to_dense(noisy_feat.to(self.device),
-                                             batch.edge_index.to(self.device),
-                                             torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
-                                                 torch.float),
-                                             batch.batch.to(self.device))
-            # dense_data["y"] = t
-            # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
-
-            eta_out = self.model(dense_data.X.to(self.device),
-                             dense_data.E.to(self.device).unsqueeze(-1),
-                             dense_data.y.to(self.device).unsqueeze(0),
-                             node_mask.to(self.device)).X
+                eta_out = self.model(dense_data.X.to(self.device),
+                                 dense_data.E.to(self.device).unsqueeze(-1),
+                                 dense_data.y.to(self.device).unsqueeze(-1),
+                                 node_mask.to(self.device)).X.reshape(x.shape)
 
 
 
-            if self.feat_type == "cont":
-                x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
-            if self.feat_type == "disc":
-                x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
+                if self.feat_type == "cont":
+                    x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
+                if self.feat_type == "disc":
+                    x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
         x = x.squeeze()
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
