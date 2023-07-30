@@ -343,6 +343,11 @@ class DiffusionUNet(torch.nn.Module):
         x = None # self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
         sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave = False)
+
+        clean_data, node_mask = to_dense(batch.x.float().to(self.device),
+                                         batch.edge_index.to(self.device),
+                                         torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(torch.float),
+                                         batch.batch.to(self.device))
         with torch.no_grad():
             for t in sampling_pbar:
                 #
@@ -357,10 +362,7 @@ class DiffusionUNet(torch.nn.Module):
 
 
                 # x0 =   # self.apply_noise(batch.x.float().to(self.device), t - 1)
-                clean_data, node_mask = to_dense(batch.x.float().to(self.device),
-                                                 batch.edge_index.to(self.device),
-                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
-                                                 batch.batch.to(self.device))
+
 
                 if x is None:
                     x = self.sample_noise_limit(clean_data.X.shape).to(self.device)
@@ -391,16 +393,16 @@ class DiffusionUNet(torch.nn.Module):
                     x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
                 if self.feat_type == "disc":
                     x = self.diff_handler.remove_noise_step(eta_out, t, add_noise = self.add_noise) # Don't need eta for this
-        x = x.squeeze()
+        # x = x.squeeze()
         if self.feat_type == "cont":
             x = (x * self.feature_vars) + self.feature_means
             x = x.to("cpu")
-
-        node_loss = self.loss_fn(x, batch.x.to(x.dtype).to("cpu"))
-        if self.feat_type == "cont":
-            distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to("cpu"), dim=0))
+        # node_loss = self.loss_fn(x, batch.x.to(x.dtype).to("cpu"))
+        node_loss = self.loss_fn(x, clean_data.X.to(x.dtype).to("cpu"))
+        if self.feat_type == "cont" and True is False:
+            distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(clean_data.X.to("cpu"), dim=0))
         elif self.feat_type == "disc":
-            distribution_loss = 0. # self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
+            distribution_loss = 1. # self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
         loss = node_loss + self.dist_weighting * distribution_loss
 
         wandb.log({f"Node-{self.loss_fn}":node_loss,
