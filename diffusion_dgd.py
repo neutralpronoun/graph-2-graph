@@ -363,7 +363,7 @@ class DiffusionUNet(torch.nn.Module):
                                                  batch.batch.to(self.device))
 
                 if x is None:
-                    x = self.sample_noise_limit(batch.x.shape).to(self.device)
+                    x = self.sample_noise_limit(clean_data.X.shape).to(self.device)
                 # x0 = clean_data.X
                 #
                 # if self.feat_type == "cont":
