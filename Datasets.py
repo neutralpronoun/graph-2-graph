@@ -312,7 +312,7 @@ def ESWR(graph, n_graphs, size):
 
     return graphs
 
-def CSWR(graph, n_runs, max_size, kwargs={"resolution":6}):
+def CSWR(graph, n_runs, max_size, kwargs={"resolution":7}):
 
     graphs = []
 
