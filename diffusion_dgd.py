@@ -344,10 +344,7 @@ class DiffusionUNet(torch.nn.Module):
         edge_index = batch.edge_index.to(self.device)
         sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave = False)
 
-        clean_data, node_mask = to_dense(batch.x.float().to(self.device),
-                                         batch.edge_index.to(self.device),
-                                         torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(torch.float),
-                                         batch.batch.to(self.device))
+
         with torch.no_grad():
             for t in sampling_pbar:
                 #
@@ -362,7 +359,11 @@ class DiffusionUNet(torch.nn.Module):
 
 
                 # x0 =   # self.apply_noise(batch.x.float().to(self.device), t - 1)
-
+                clean_data, node_mask = to_dense(batch.x.float().to(self.device),
+                                                 batch.edge_index.to(self.device),
+                                                 torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
+                                                     torch.float),
+                                                 batch.batch.to(self.device))
 
                 if x is None:
                     x = self.sample_noise_limit(clean_data.X.shape).to(self.device)
