@@ -263,7 +263,10 @@ class DiffusionUNet(torch.nn.Module):
                 t = np.random.randint(self.diffusion_steps)
 
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-
+                print(x0.shape,
+                      batch.edge_index.shape,
+                      torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
+                      batch.batch)
                 clean_data, node_mask = to_dense(x0,
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
