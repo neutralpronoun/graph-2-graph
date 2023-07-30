@@ -340,7 +340,7 @@ class DiffusionUNet(torch.nn.Module):
 
     def sample_features(self, batch, visualise = None, gif_first = False):
         self.model.eval()
-        x = self.sample_noise_limit(batch.x.shape).to(self.device)
+        x = None # self.sample_noise_limit(batch.x.shape).to(self.device)
         edge_index = batch.edge_index.to(self.device)
         sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave = False)
         with torch.no_grad():
@@ -356,11 +356,14 @@ class DiffusionUNet(torch.nn.Module):
                 #                                  batch.batch.to(self.device))
 
 
-                x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-                clean_data, node_mask = to_dense(x0,
+                # x0 =   # self.apply_noise(batch.x.float().to(self.device), t - 1)
+                clean_data, node_mask = to_dense(batch.x.float().to(self.device),
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
                                                  batch.batch.to(self.device))
+
+                if x is None:
+                    x = self.sample_noise_limit(batch.x.shape).to(self.device)
                 # x0 = clean_data.X
                 #
                 # if self.feat_type == "cont":
