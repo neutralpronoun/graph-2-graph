@@ -261,6 +261,7 @@ class DiffusionUNet(torch.nn.Module):
 
             for ib, batch in enumerate(pbar_batch):
                 t = np.random.randint(self.diffusion_steps)
+
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
 
                 clean_data, node_mask = to_dense(x0,
@@ -276,12 +277,15 @@ class DiffusionUNet(torch.nn.Module):
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
 
-                print(self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze().shape,
+                print(self.extra_features(clean_data.E.to(self.device)).shape,
                       "--",
                       noisy_feat.shape)
 
-                noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                noisy_feat = torch.cat((self.extra_features(clean_data.E.to(self.device))[0].squeeze(),
                                         noisy_feat), dim=1)
+
+                # noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
+                #                         noisy_feat), dim=1)
                 # out = self.model(noisy_feat, batch.edge_index.to(self.device))
                 dense_data, node_mask = to_dense(noisy_feat.to(self.device),
                                                  batch.edge_index.to(self.device),
