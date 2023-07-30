@@ -275,6 +275,11 @@ class DiffusionUNet(torch.nn.Module):
                 eta = torch.randn_like(x0).to(self.device)
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
+
+                print(self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze().shape,
+                      "--",
+                      noisy_feat.shape)
+
                 noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                                         noisy_feat), dim=1)
                 # out = self.model(noisy_feat, batch.edge_index.to(self.device))
