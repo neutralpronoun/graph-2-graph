@@ -286,6 +286,7 @@ class DiffusionUNet(torch.nn.Module):
 
                 if self.feat_type == "cont":
                     # print(out.X, eta)
+                    print(out.X.shape, eta.shape)
                     loss = self.loss_fn(out.X.flatten(), eta.flatten())
                 else:
                     # print(out, x0)
