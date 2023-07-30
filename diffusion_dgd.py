@@ -263,16 +263,10 @@ class DiffusionUNet(torch.nn.Module):
                 t = np.random.randint(self.diffusion_steps)
 
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-                # print(x0.shape,
-                #       batch.edge_index.shape,
-                #       torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
-                #       batch.batch.shape,
-                #       batch.batch)
                 clean_data, node_mask = to_dense(x0,
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
                                                  batch.batch.to(self.device))
-
                 x0 = clean_data.X
 
                 if self.feat_type == "cont":
@@ -281,34 +275,8 @@ class DiffusionUNet(torch.nn.Module):
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
 
-                # print(self.extra_features(clean_data.E.to(self.device))[0].shape,
-                #       "--",
-                #       noisy_feat.shape)
-                # print(self.extra_features(clean_data.E.to(self.device))[0].shape, "--", noisy_feat.shape)
                 noisy_feat = torch.cat((self.extra_features(clean_data.E.to(self.device))[0],
                                         noisy_feat), dim=-1)
-
-                # noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-                #                         noisy_feat), dim=1)
-                # out = self.model(noisy_feat, batch.edge_index.to(self.device))
-                # print(noisy_feat.to(self.device).shape,
-                #                                  batch.edge_index.to(self.device).shape,
-                #                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
-                #                                  batch.batch,
-                #                                  batch.batch.shape)
-                #
-                # dense_data, node_mask = to_dense(noisy_feat.to(self.device),
-                #                                  batch.edge_index.to(self.device),
-                #                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
-                #                                  batch.batch.to(self.device))
-                # dense_data["y"] = t
-
-                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(-1).shape, node_mask.shape)
-
-                # out = self.model(dense_data.X.to(self.device),
-                #                  dense_data.E.to(self.device).unsqueeze(-1),
-                #                  dense_data.y.to(self.device).unsqueeze(-1),
-                #                  node_mask.to(self.device))
 
                 out = self.model(noisy_feat.to(self.device),
                                  clean_data.E.to(self.device).unsqueeze(-1),
@@ -316,11 +284,8 @@ class DiffusionUNet(torch.nn.Module):
                                  node_mask.to(self.device))
 
                 if self.feat_type == "cont":
-                    # print(out.X, eta)
-                    print(out.X.shape, eta.shape)
                     loss = self.loss_fn(out.X.flatten(), eta.flatten())
                 else:
-                    # print(out, x0)
                     loss = self.loss_fn(out, x0)
 
                 self.optimizer.zero_grad()
@@ -336,11 +301,6 @@ class DiffusionUNet(torch.nn.Module):
             if epoch_number  % self.vis_every == 0 or epoch_number == n_epochs - 1:
                 val_loss = self.validation_epoch(gif_first = gif_first,
                                                  epoch_number = epoch_number)
-            # elif epoch_number % self.val_every == 0:
-            #     self.discriminator.epoch(self.val_loader, self)
-
-
-            # pbar.set_description(f"Epoch: {epoch} Loss: {str(epoch_loss)[:4]} Validation: {str(val_loss)[:4]}")
             losses.append(epoch_loss)
 
 
@@ -366,10 +326,6 @@ class DiffusionUNet(torch.nn.Module):
 
                 val_loss += val_batch_loss.item() / val_batch.num_graphs
 
-            # val_loss += val_batch_loss.item() / val_batch.num_graphs
-
-        # self.discriminator.epoch(self.val_loader, self)
-        # wandb.log({"Similarity": val_metric})
         wandb.log(val_metric)
         wandb.log({f"Val-{self.loss_fn}": val_loss})
 
@@ -389,32 +345,44 @@ class DiffusionUNet(torch.nn.Module):
         sampling_pbar = tqdm(reversed(range(self.diffusion_steps_sampling)), leave = False)
         with torch.no_grad():
             for t in sampling_pbar:
-                # print(f"timestep {t}")
-                # eta_out = self.model(torch.cat((torch.full((batch.x.shape[0], 1), t).to(self.device),
-                #                       self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
-                #                       x), dim = 1),
-                #                      edge_index)
+                #
+                # extra_feat = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
+                # noisy_feat = torch.cat((extra_feat,
+                #                         x.squeeze()), dim=1)
+                # dense_data, node_mask = to_dense(noisy_feat.to(self.device),
+                #                                  batch.edge_index.to(self.device),
+                #                                  torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
+                #                                      torch.float),
+                #                                  batch.batch.to(self.device))
+
+
+                x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
+                clean_data, node_mask = to_dense(x0,
+                                                 batch.edge_index.to(self.device),
+                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
+                                                 batch.batch.to(self.device))
+                # x0 = clean_data.X
+                #
+                # if self.feat_type == "cont":
+                #     x0 = ((x0 - self.feature_means) / self.feature_vars).float()
+                # eta = torch.randn_like(x0).to(self.device)
 
                 # noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
-                extra_feat = self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze()
-                # print(extra_feat.shape, x.shape)
-                noisy_feat = torch.cat((extra_feat,
-                                        x.squeeze()), dim=1)
-                # out = self.model(noisy_feat, batch.edge_index.to(self.device))
-                dense_data, node_mask = to_dense(noisy_feat.to(self.device),
-                                                 batch.edge_index.to(self.device),
-                                                 torch.full((torch.max(batch.batch) + 1,), t).to(self.device).to(
-                                                     torch.float),
-                                                 batch.batch.to(self.device))
-                # dense_data["y"] = t
-                # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(0).shape, node_mask.shape)
 
-                eta_out = self.model(dense_data.X.to(self.device),
-                                 dense_data.E.to(self.device).unsqueeze(-1),
-                                 dense_data.y.to(self.device).unsqueeze(-1),
-                                 node_mask.to(self.device)).X.reshape(x.shape)
+                noisy_feat = torch.cat((self.extra_features(clean_data.E.to(self.device))[0],
+                                        x), dim=-1)
+
+                eta_out = self.model(noisy_feat.to(self.device),
+                                 clean_data.E.to(self.device).unsqueeze(-1),
+                                 clean_data.y.to(self.device).unsqueeze(-1),
+                                 node_mask.to(self.device))
 
 
+
+                # eta_out = self.model(dense_data.X.to(self.device),
+                #                  dense_data.E.to(self.device).unsqueeze(-1),
+                #                  dense_data.y.to(self.device).unsqueeze(-1),
+                #                  node_mask.to(self.device)).X.reshape(x.shape)
 
                 if self.feat_type == "cont":
                     x = self.diff_handler.remove_noise_step(x, eta_out, t, add_noise = self.add_noise)
@@ -425,7 +393,6 @@ class DiffusionUNet(torch.nn.Module):
             x = (x * self.feature_vars) + self.feature_means
             x = x.to("cpu")
 
-        # print(x, batch.x.to(self.device))
         node_loss = self.loss_fn(x, batch.x.to(x.dtype).to("cpu"))
         if self.feat_type == "cont":
             distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(batch.x.to("cpu"), dim=0))
