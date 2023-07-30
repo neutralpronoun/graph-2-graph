@@ -409,7 +409,7 @@ class DiffusionUNet(torch.nn.Module):
         wandb.log({f"Node-{self.loss_fn}":node_loss,
                    f"Component-Mean-{self.loss_fn}": distribution_loss})
 
-        return loss, x
+        return loss, torch.reshape(x, (-1, batch.x.shape[-1]))
 
 
 @hydra.main(version_base='1.1', config_path='configs', config_name="dgd")
