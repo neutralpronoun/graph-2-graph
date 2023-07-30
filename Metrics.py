@@ -107,7 +107,7 @@ class ContinuousVectorMetrics:
             loss, x_pred = wrapper.sample_features(batch,
                                                    visualise = None,
                                                    gif_first = False)
-            print(x_pred)
+            print(x_pred.shape)
             x_preds_batch.append(x_pred.detach().cpu())
 
             total_loss += loss.item() / batch.num_graphs
