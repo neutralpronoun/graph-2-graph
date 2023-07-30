@@ -280,7 +280,7 @@ class DiffusionUNet(torch.nn.Module):
                 # print(self.extra_features(clean_data.E.to(self.device))[0].shape,
                 #       "--",
                 #       noisy_feat.shape)
-
+                print(self.extra_features(clean_data.E.to(self.device))[0].shape, "--", noisy_feat.shape)
                 noisy_feat = torch.cat((self.extra_features(clean_data.E.to(self.device))[0],
                                         noisy_feat), dim=1)
 
