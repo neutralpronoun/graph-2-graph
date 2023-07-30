@@ -263,11 +263,11 @@ class DiffusionUNet(torch.nn.Module):
                 t = np.random.randint(self.diffusion_steps)
 
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
-                print(x0.shape,
-                      batch.edge_index.shape,
-                      torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
-                      batch.batch.shape,
-                      batch.batch)
+                # print(x0.shape,
+                #       batch.edge_index.shape,
+                #       torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
+                #       batch.batch.shape,
+                #       batch.batch)
                 clean_data, node_mask = to_dense(x0,
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
@@ -284,30 +284,35 @@ class DiffusionUNet(torch.nn.Module):
                 # print(self.extra_features(clean_data.E.to(self.device))[0].shape,
                 #       "--",
                 #       noisy_feat.shape)
-                print(self.extra_features(clean_data.E.to(self.device))[0].shape, "--", noisy_feat.shape)
+                # print(self.extra_features(clean_data.E.to(self.device))[0].shape, "--", noisy_feat.shape)
                 noisy_feat = torch.cat((self.extra_features(clean_data.E.to(self.device))[0],
                                         noisy_feat), dim=-1)
 
                 # noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                 #                         noisy_feat), dim=1)
                 # out = self.model(noisy_feat, batch.edge_index.to(self.device))
-                print(noisy_feat.to(self.device).shape,
-                                                 batch.edge_index.to(self.device).shape,
-                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
-                                                 batch.batch,
-                                                 batch.batch.shape)
-
-                dense_data, node_mask = to_dense(noisy_feat.to(self.device),
-                                                 batch.edge_index.to(self.device),
-                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
-                                                 batch.batch.to(self.device))
+                # print(noisy_feat.to(self.device).shape,
+                #                                  batch.edge_index.to(self.device).shape,
+                #                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
+                #                                  batch.batch,
+                #                                  batch.batch.shape)
+                #
+                # dense_data, node_mask = to_dense(noisy_feat.to(self.device),
+                #                                  batch.edge_index.to(self.device),
+                #                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
+                #                                  batch.batch.to(self.device))
                 # dense_data["y"] = t
 
                 # print(dense_data.X.shape, dense_data.E.unsqueeze(-1).shape, dense_data.y.unsqueeze(-1).shape, node_mask.shape)
 
-                out = self.model(dense_data.X.to(self.device),
-                                 dense_data.E.to(self.device).unsqueeze(-1),
-                                 dense_data.y.to(self.device).unsqueeze(-1),
+                # out = self.model(dense_data.X.to(self.device),
+                #                  dense_data.E.to(self.device).unsqueeze(-1),
+                #                  dense_data.y.to(self.device).unsqueeze(-1),
+                #                  node_mask.to(self.device))
+
+                out = self.model(noisy_feat.to(self.device),
+                                 clean_data.E.to(self.device).unsqueeze(-1),
+                                 clean_data.y.to(self.device).unsqueeze(-1),
                                  node_mask.to(self.device))
 
                 if self.feat_type == "cont":
