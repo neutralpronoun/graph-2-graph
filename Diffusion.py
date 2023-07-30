@@ -248,7 +248,7 @@ class ContinuousDiffusionFunctions:
 
         if eta is None:
             eta = torch.randn(x_shape).to(self.device)
-        print(a_bar, x.shape, eta.shape)
+        # print(a_bar, x.shape, eta.shape)
         noisy = a_bar.sqrt() * x + (1 - a_bar).sqrt() * eta
 
         return noisy
