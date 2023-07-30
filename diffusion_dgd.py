@@ -270,7 +270,8 @@ class DiffusionUNet(torch.nn.Module):
                 clean_data, node_mask = to_dense(x0,
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
-                                                 batch.batch.to(self.device))
+                                                 batch.batch.to(self.device).shape,
+                                                 batch.batch)
 
                 x0 = clean_data.X
 
@@ -294,7 +295,7 @@ class DiffusionUNet(torch.nn.Module):
                                                  batch.edge_index.to(self.device).shape,
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
                                                  batch.batch,
-                                                 clean_data.batch)
+                                                 batch.batch.shape)
 
                 dense_data, node_mask = to_dense(noisy_feat.to(self.device),
                                                  batch.edge_index.to(self.device),
