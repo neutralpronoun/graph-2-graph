@@ -378,7 +378,7 @@ class DiffusionUNet(torch.nn.Module):
                 eta_out = self.model(noisy_feat.to(self.device),
                                  clean_data.E.to(self.device).unsqueeze(-1),
                                  clean_data.y.to(self.device).unsqueeze(-1),
-                                 node_mask.to(self.device))
+                                 node_mask.to(self.device)).X
 
 
 
