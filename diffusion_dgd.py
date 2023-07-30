@@ -270,7 +270,7 @@ class DiffusionUNet(torch.nn.Module):
 
                 if self.feat_type == "cont":
                     x0 = ((x0 - self.feature_means) / self.feature_vars).float()
-                eta = torch.randn_like(x0).to(self.device)
+                eta = torch.randn_like(clean_data.X).to(self.device)
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
                 noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
