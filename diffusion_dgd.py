@@ -402,7 +402,7 @@ class DiffusionUNet(torch.nn.Module):
         node_loss = self.loss_fn(x, clean_data.X.to(x.dtype).to("cpu"))
         if self.feat_type == "cont" and True is False:
             distribution_loss = self.loss_fn(torch.mean(x, dim=0), torch.mean(clean_data.X.to("cpu"), dim=0))
-        elif self.feat_type == "disc":
+        else: # self.feat_type == "disc":
             distribution_loss = 1. # self.loss_fn(torch.mean(x), torch.mean(batch.x.to(self.device)))
         loss = node_loss + self.dist_weighting * distribution_loss
 
