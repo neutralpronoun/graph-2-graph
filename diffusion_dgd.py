@@ -277,7 +277,7 @@ class DiffusionUNet(torch.nn.Module):
 
                 noisy_feat = self.diff_handler.apply_noise(x0, t, eta=eta)
 
-                print(self.extra_features(clean_data.E.to(self.device)).shape,
+                print(self.extra_features(clean_data.E.to(self.device))[0].shape,
                       "--",
                       noisy_feat.shape)
 
