@@ -287,6 +287,11 @@ class DiffusionUNet(torch.nn.Module):
                 # noisy_feat = torch.cat((self.extra_features(pyg.utils.to_dense_adj(batch.edge_index.to(self.device)))[0].squeeze(),
                 #                         noisy_feat), dim=1)
                 # out = self.model(noisy_feat, batch.edge_index.to(self.device))
+                print(noisy_feat.to(self.device).shape,
+                                                 batch.edge_index.to(self.device).shape,
+                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float).shape,
+                                                 batch.batch.to(self.device).shape)
+
                 dense_data, node_mask = to_dense(noisy_feat.to(self.device),
                                                  batch.edge_index.to(self.device),
                                                  torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
