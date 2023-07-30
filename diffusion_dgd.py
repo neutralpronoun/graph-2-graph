@@ -263,6 +263,11 @@ class DiffusionUNet(torch.nn.Module):
                 t = np.random.randint(self.diffusion_steps)
                 x0 = batch.x.float().to(self.device)  # self.apply_noise(batch.x.float().to(self.device), t - 1)
 
+                clean_data, node_mask = to_dense(x0,
+                                                 batch.edge_index.to(self.device),
+                                                 torch.full((torch.max(batch.batch) + 1, ), t).to(self.device).to(torch.float),
+                                                 batch.batch.to(self.device))
+
                 if self.feat_type == "cont":
                     x0 = ((x0 - self.feature_means) / self.feature_vars).float()
                 eta = torch.randn_like(x0).to(self.device)
